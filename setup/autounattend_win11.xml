@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend
+  xmlns="urn:schemas-microsoft-com:unattend"
+  xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+>
+  <!-- 1. Windows PE — disk partitioning + image selection -->
+  <settings pass="windowsPE">
+    <component
+      name="Microsoft-Windows-International-Core-WinPE"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <SetupUILanguage>
+        <UILanguage>en-GB</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-GB</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-GB</UserLocale>
+    </component>
+
+    <component
+      name="Microsoft-Windows-Setup"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <!-- Generic Windows 11 Pro KMS key -->
+      <UserData>
+        <ProductKey>
+          <Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+        <AcceptEula>true</AcceptEula>
+      </UserData>
+
+      <!-- Select Windows 11 Pro image -->
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows 11 Pro</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+        </OSImage>
+      </ImageInstall>
+
+      <!-- GPT partition layout for UEFI -->
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>260</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Size>16</Size>
+              <Type>MSR</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Extend>true</Extend>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>EFI</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <!-- Bypass TPM/Secure Boot/RAM checks for VM install -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+
+    <!-- Load VirtIO drivers during install (w11 paths) -->
+    <component
+      name="Microsoft-Windows-PnpCustomizationsWinPE"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <DriverPaths>
+        <!-- Only load specific drivers needed (catch-all amd64\w11 causes 0x80070103 on Win11 25H2) -->
+        <!-- Try D: through F: — WinPE silently skips missing paths -->
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\viostor\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="2">
+          <Path>D:\NetKVM\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="3">
+          <Path>D:\vioscsi\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="4">
+          <Path>E:\viostor\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="5">
+          <Path>E:\NetKVM\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="6">
+          <Path>E:\vioscsi\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="7">
+          <Path>F:\viostor\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="8">
+          <Path>F:\NetKVM\w11\amd64</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="9">
+          <Path>F:\vioscsi\w11\amd64</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+  </settings>
+
+  <!-- 2. Specialize — computer name + OOBE bypass registry keys -->
+  <settings pass="specialize">
+    <component
+      name="Microsoft-Windows-Shell-Setup"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <ComputerName>CI-WIN11-TEMPLATE</ComputerName>
+      <TimeZone>UTC</TimeZone>
+    </component>
+    <component
+      name="Microsoft-Windows-Deployment"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" /v BypassNRO /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE" /v DisablePrivacyExperience /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <!-- Suppress "Set Network Location" popup -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add "HKLM\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" /f</Path>
+        </RunSynchronousCommand>
+        <!-- Copy SetupComplete.cmd from CI drivers ISO to run after OOBE -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>cmd /c if not exist "C:\Windows\Setup\Scripts" mkdir "C:\Windows\Setup\Scripts"</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>cmd /c if exist D:\SetupComplete.cmd copy /y D:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <Path>cmd /c if exist E:\SetupComplete.cmd copy /y E:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>7</Order>
+          <Path>cmd /c if exist F:\SetupComplete.cmd copy /y F:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>8</Order>
+          <Path>cmd /c if exist G:\SetupComplete.cmd copy /y G:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>9</Order>
+          <Path>cmd /c if exist H:\SetupComplete.cmd copy /y H:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>10</Order>
+          <Path>cmd /c if exist I:\SetupComplete.cmd copy /y I:\SetupComplete.cmd C:\Windows\Setup\Scripts\SetupComplete.cmd</Path>
+        </RunSynchronousCommand>
+        <!-- Copy postinstall script to local fallback (individual cmds, for-loops unreliable in unattend) -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>11</Order>
+          <Path>cmd /c if exist D:\setup_windows_postinstall.ps1 copy /y D:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>12</Order>
+          <Path>cmd /c if exist E:\setup_windows_postinstall.ps1 copy /y E:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>13</Order>
+          <Path>cmd /c if exist F:\setup_windows_postinstall.ps1 copy /y F:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>14</Order>
+          <Path>cmd /c if exist G:\setup_windows_postinstall.ps1 copy /y G:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>15</Order>
+          <Path>cmd /c if exist H:\setup_windows_postinstall.ps1 copy /y H:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>16</Order>
+          <Path>cmd /c if exist I:\setup_windows_postinstall.ps1 copy /y I:\setup_windows_postinstall.ps1 C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1</Path>
+        </RunSynchronousCommand>
+        <!-- Copy SSH public key to local fallback -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>17</Order>
+          <Path>cmd /c if exist D:\ci_ed25519.pub copy /y D:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>18</Order>
+          <Path>cmd /c if exist E:\ci_ed25519.pub copy /y E:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>19</Order>
+          <Path>cmd /c if exist F:\ci_ed25519.pub copy /y F:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>20</Order>
+          <Path>cmd /c if exist G:\ci_ed25519.pub copy /y G:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>21</Order>
+          <Path>cmd /c if exist H:\ci_ed25519.pub copy /y H:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>22</Order>
+          <Path>cmd /c if exist I:\ci_ed25519.pub copy /y I:\ci_ed25519.pub C:\Windows\Setup\Scripts\ci_ed25519.pub</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+
+  <!-- 3. OOBE — skip all prompts, create admin user, auto-login -->
+  <settings pass="oobeSystem">
+    <component
+      name="Microsoft-Windows-Shell-Setup"
+      processorArchitecture="amd64"
+      publicKeyToken="31bf3856ad364e35"
+      language="neutral"
+      versionScope="nonSxS"
+    >
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+
+      <UserAccounts>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Password>
+              <Value>CiPass123</Value>
+              <PlainText>true</PlainText>
+            </Password>
+            <Name>ci</Name>
+            <Group>Administrators</Group>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+
+      <AutoLogon>
+        <Enabled>true</Enabled>
+        <Username>ci</Username>
+        <Password>
+          <Value>CiPass123</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <LogonCount>99999</LogonCount>
+      </AutoLogon>
+
+      <!-- Run postinstall script on first login (local copy placed by specialize pass) -->
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell -ExecutionPolicy Bypass -File "C:\Windows\Setup\Scripts\setup_windows_postinstall.ps1"</CommandLine>
+          <Description>NoMercy CI post-install</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

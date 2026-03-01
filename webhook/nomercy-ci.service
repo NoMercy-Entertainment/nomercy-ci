@@ -1,0 +1,19 @@
+[Unit]
+Description=NoMercy CI — GitHub Webhook Receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nomercy-ci
+EnvironmentFile=/opt/nomercy-ci/webhook/webhook_server.env
+ExecStart=/usr/bin/python3 /opt/nomercy-ci/webhook/webhook_server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nomercy-ci
+
+[Install]
+WantedBy=multi-user.target
