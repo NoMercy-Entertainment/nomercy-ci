@@ -28,7 +28,7 @@ Write-Log "Tag: $ReleaseTag"
 $Version = $ReleaseTag -replace '^v', '' -replace '-.*$', ''
 Write-Log "Version: $Version"
 
-$ExeUrl = "https://github.com/NoMercy-Entertainment/NoMercyMediaServer/releases/download/$ReleaseTag/NoMercyMediaServer-windows-x64.exe"
+$ExeUrl = "https://github.com/NoMercy-Entertainment/nomercy-media-server/releases/download/$ReleaseTag/NoMercyMediaServer-windows-x64.exe"
 $ExePath = "$InstallDir\NoMercyMediaServer.exe"
 
 Write-Log "Downloading: $ExeUrl"

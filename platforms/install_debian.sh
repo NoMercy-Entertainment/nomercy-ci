@@ -8,7 +8,7 @@ set -euo pipefail
 RELEASE_TAG="${1:?Usage: $0 <release_tag>}"
 VERSION="${RELEASE_TAG#v}"
 VERSION="${VERSION%%-*}"
-RELEASES_BASE="https://github.com/NoMercy-Entertainment/NoMercyMediaServer/releases/download"
+RELEASES_BASE="https://github.com/NoMercy-Entertainment/nomercy-media-server/releases/download"
 DEB_URL="${RELEASES_BASE}/${RELEASE_TAG}/nomercymediaserver_${VERSION}_amd64.deb"
 
 echo "=== NoMercy Debian Install ===" | tee /tmp/install.log

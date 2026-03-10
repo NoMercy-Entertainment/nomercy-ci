@@ -1,6 +1,6 @@
-# NoMercy.CI
+# nomercy-ci
 
-A self-hosted, zero-cost CI/CD test lab that automatically validates [NoMercy MediaServer](https://github.com/NoMercy-Entertainment/NoMercyMediaServer) release binaries across multiple operating systems and architectures. Runs entirely on a single Proxmox VE host using LXC containers and KVM virtual machines — no paid CI services required.
+A self-hosted, zero-cost CI/CD test lab that automatically validates [NoMercy MediaServer](https://github.com/NoMercy-Entertainment/nomercy-media-server) release binaries across multiple operating systems and architectures. Runs entirely on a single Proxmox VE host using LXC containers and KVM virtual machines — no paid CI services required.
 
 ## How It Works
 

@@ -10,7 +10,7 @@ ARTIFACT_ROOT="/mnt/vault/nomercy-artifacts"
 
 # GitHub repository
 GITHUB_ORG="NoMercy-Entertainment"
-GITHUB_REPO="NoMercyMediaServer"
+GITHUB_REPO="nomercy-media-server"
 GITHUB_API="https://api.github.com/repos/${GITHUB_ORG}/${GITHUB_REPO}"
 GITHUB_RELEASES_BASE="https://github.com/${GITHUB_ORG}/${GITHUB_REPO}/releases/download"
 
