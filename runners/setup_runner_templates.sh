@@ -101,42 +101,52 @@ setup_linux_template() {
 
     # Start and wait for cloud-init + SSH
     qm start "$vmid"
-    log "VM started. Waiting for DHCP lease..."
+    log "VM started. Waiting for boot + DHCP..."
 
     # Get MAC address from VM config
     local mac
     mac=$(qm config "$vmid" | grep '^net0' | grep -oiE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}' | head -1)
     [[ -n "$mac" ]] || die "Could not find MAC address for VM ${vmid}"
+    local mac_lower
+    mac_lower=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
     log "MAC: ${mac}"
 
-    # Get IP by matching MAC in ARP table
-    # Ping broadcast first to populate ARP, then grep for our MAC
+    # Wait for cloud-init to bring up networking
+    sleep 30
+
+    # Find IP — scan the bridge interface for our MAC
     local ip=""
-    local bridge_ip
-    bridge_ip=$(ip -4 addr show "${BRIDGE}" 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
-    local subnet="${bridge_ip%.*}"
+    log "Scanning for VM on network..."
 
-    for attempt in $(seq 1 40); do
-        # Ping broadcast to populate ARP table
-        ping -c 1 -W 1 "${subnet}.255" >/dev/null 2>&1 || true
+    # Install arp-scan if not present
+    command -v arp-scan >/dev/null 2>&1 || apt-get install -y arp-scan >/dev/null 2>&1
 
-        # Check ARP table for our MAC (IPv4 only, skip fe80:: link-local)
-        ip=$(ip -4 neigh show 2>/dev/null | grep -i "$mac" | awk '{print $1}' | head -1) || true
+    for attempt in $(seq 1 20); do
+        # arp-scan is the most reliable way to find a MAC on a bridge
+        if command -v arp-scan >/dev/null 2>&1; then
+            ip=$(arp-scan --interface="${BRIDGE}" --localnet 2>/dev/null \
+                | grep -i "$mac_lower" | awk '{print $1}' | head -1) || true
+        fi
+
+        # Fallback: check ARP table
+        if [[ -z "$ip" ]]; then
+            ip=$(ip -4 neigh show dev "${BRIDGE}" 2>/dev/null \
+                | grep -i "$mac_lower" | awk '{print $1}' | head -1) || true
+        fi
 
         if [[ -n "$ip" ]]; then
-            log "VM IP: ${ip} (found after ${attempt} attempts)"
+            log "VM IP: ${ip} (found after ~$((30 + attempt * 5))s)"
             break
         fi
 
-        # Progress indicator every 10 attempts
-        if (( attempt % 10 == 0 )); then
-            log "Still waiting for DHCP... (${attempt}/40)"
+        if (( attempt % 5 == 0 )); then
+            log "Still scanning... (attempt ${attempt}/20)"
         fi
 
-        sleep 3
+        sleep 5
     done
 
-    [[ -n "$ip" ]] || die "Could not get IP for VM ${vmid} after 120s. Check DHCP and network bridge."
+    [[ -n "$ip" ]] || die "Could not find VM ${vmid} on the network after 130s. Is DHCP running on ${BRIDGE}?"
 
     log "Waiting for SSH..."
     wait_for_ssh "$ip" 180
