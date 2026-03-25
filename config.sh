@@ -74,39 +74,39 @@ WEBHOOK_PORT=9000
 # ── GitHub Actions Self-Hosted Runners ──────────────────────────────────────
 
 # GitHub PAT with admin:org scope (for runner registration)
-# Set in environment or /opt/nomercy-ci/.env
-RUNNER_GH_TOKEN="${RUNNER_GH_TOKEN:-${GH_TOKEN:-}}"
-RUNNER_ORG="NoMercy-Entertainment"
-RUNNER_GROUP="${RUNNER_GROUP:-Default}"
-RUNNER_VERSION="2.322.0"
+# All runner settings come from .env — no hardcoded defaults
+RUNNER_GH_TOKEN="${RUNNER_GH_TOKEN:-}"
+RUNNER_ORG="${RUNNER_ORG:-}"
+RUNNER_GROUP="${RUNNER_GROUP:-}"
+RUNNER_VERSION="${RUNNER_VERSION:-}"
 
 # Runner VM template IDs (created by setup/setup_runner_templates.sh)
 declare -A RUNNER_TEMPLATES=(
-    ["linux"]=5000
-    ["macos"]=5001
-    ["windows"]=5002
+    ["linux"]="${RUNNER_TEMPLATE_LINUX:-5000}"
+    ["macos"]="${RUNNER_TEMPLATE_MACOS:-5001}"
+    ["windows"]="${RUNNER_TEMPLATE_WINDOWS:-5002}"
 )
 
 # Runner VM ID range (ephemeral runners cloned from templates)
-RUNNER_ID_MIN=5100
-RUNNER_ID_MAX=5199
+RUNNER_ID_MIN="${RUNNER_ID_MIN:-5100}"
+RUNNER_ID_MAX="${RUNNER_ID_MAX:-5199}"
 
 # Runner resource limits per OS
-RUNNER_LINUX_CORES=4
-RUNNER_LINUX_MEM=8192
+RUNNER_LINUX_CORES="${RUNNER_LINUX_CORES:-4}"
+RUNNER_LINUX_MEM="${RUNNER_LINUX_MEM:-8192}"
 
-RUNNER_MACOS_CORES=4
-RUNNER_MACOS_MEM=8192
+RUNNER_MACOS_CORES="${RUNNER_MACOS_CORES:-4}"
+RUNNER_MACOS_MEM="${RUNNER_MACOS_MEM:-8192}"
 
-RUNNER_WINDOWS_CORES=4
-RUNNER_WINDOWS_MEM=8192
+RUNNER_WINDOWS_CORES="${RUNNER_WINDOWS_CORES:-4}"
+RUNNER_WINDOWS_MEM="${RUNNER_WINDOWS_MEM:-8192}"
 
 # Runner labels per OS
-RUNNER_LINUX_LABELS="self-hosted,Linux,X64"
-RUNNER_MACOS_LABELS="self-hosted,macOS,ARM64"
-RUNNER_WINDOWS_LABELS="self-hosted,Windows,X64"
+RUNNER_LINUX_LABELS="${RUNNER_LINUX_LABELS:-}"
+RUNNER_MACOS_LABELS="${RUNNER_MACOS_LABELS:-}"
+RUNNER_WINDOWS_LABELS="${RUNNER_WINDOWS_LABELS:-}"
 
 # Cloud images for runner templates
-RUNNER_LINUX_IMAGE="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
-RUNNER_MACOS_ISO="${RUNNER_MACOS_ISO:-nas:iso/macOS-Sequoia-15.iso}"  # provide your own
-RUNNER_WINDOWS_ISO="${WIN_ISOS[win11]}"
+RUNNER_LINUX_IMAGE="${RUNNER_LINUX_IMAGE:-}"
+RUNNER_MACOS_ISO="${RUNNER_MACOS_ISO:-}"
+RUNNER_WINDOWS_ISO="${RUNNER_WINDOWS_ISO:-}"
