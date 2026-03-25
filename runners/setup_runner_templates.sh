@@ -31,7 +31,6 @@ validate_env() {
     local os=$1
     case "$os" in
         linux)
-            [[ -n "$RUNNER_LINUX_IMAGE" ]] || die "RUNNER_LINUX_IMAGE not set in .env"
             [[ -n "$RUNNER_VERSION" ]] || die "RUNNER_VERSION not set in .env"
             ;;
         macos)
@@ -44,115 +43,85 @@ validate_env() {
 }
 
 ########################################
-# Linux runner template (Ubuntu 24.04)
+# Linux runner template (Ubuntu 24.04 LXC)
 ########################################
 
 setup_linux_template() {
-    local vmid=${RUNNER_TEMPLATES[linux]}
+    local ctid=${RUNNER_TEMPLATES[linux]}
     local name="runner-linux-template"
+    local tmpl="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 
-    log "=== Linux Runner Template (VMID ${vmid}) ==="
+    log "=== Linux Runner Template (CTID ${ctid}) ==="
     validate_env linux
 
+    # Download template if needed
+    if ! pveam list local 2>/dev/null | grep -q "$tmpl"; then
+        log "Downloading Ubuntu 24.04 LXC template..."
+        pveam download local "$tmpl" || die "Failed to download template. Run 'pveam update' first."
+    else
+        log "Template already downloaded: ${tmpl}"
+    fi
+
     # Remove existing
-    if qm config "$vmid" >/dev/null 2>&1; then
-        log "Removing existing template ${vmid}..."
-        qm stop "$vmid" 2>/dev/null || true
+    if pct config "$ctid" >/dev/null 2>&1; then
+        log "Removing existing template ${ctid}..."
+        pct stop "$ctid" 2>/dev/null || true
         sleep 2
-        qm destroy "$vmid" --purge 1 2>/dev/null || true
+        pct destroy "$ctid" --purge 2>/dev/null || true
     fi
 
-    # Download cloud image
-    local img="/var/lib/vz/template/iso/ubuntu-24.04-cloudimg.img"
-    if [[ ! -f "$img" ]]; then
-        log "Downloading Ubuntu 24.04 cloud image..."
-        curl -fSL "$RUNNER_LINUX_IMAGE" -o "$img"
-    fi
-
-    # Create VM
-    log "Creating VM..."
-    qm create "$vmid" \
-        --name "$name" \
-        --ostype l26 \
+    # Create container with nesting + Docker support
+    log "Creating LXC container..."
+    pct create "$ctid" "local:vztmpl/${tmpl}" \
+        --hostname "$name" \
         --cores "$RUNNER_LINUX_CORES" \
         --memory "$RUNNER_LINUX_MEM" \
-        --net0 "virtio,bridge=${BRIDGE}" \
-        --scsihw virtio-scsi-single \
-        --serial0 socket \
-        --vga serial0 \
-        --agent enabled=1,fstrim_cloned_disks=1
+        --swap 1024 \
+        --rootfs "${STORAGE}:50" \
+        --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp" \
+        --unprivileged 1 \
+        --features "nesting=1,keyctl=1" \
+        --start 1
 
-    # Import disk
-    log "Importing disk image (transfer + format conversion — this can take a few minutes on LVM)..."
-    qm set "$vmid" --scsi0 "${STORAGE}:0,import-from=${img},discard=on,ssd=1"
-    log "Disk imported. Resizing to 50G..."
-    qm resize "$vmid" scsi0 50G
-    log "Setting boot order..."
-    qm set "$vmid" --boot order=scsi0
+    log "Waiting for container to boot..."
+    sleep 8
 
-    # Cloud-init
-    log "Configuring cloud-init..."
-    qm set "$vmid" --ide2 "${STORAGE}:cloudinit"
-    qm set "$vmid" --ciuser "$SSH_USER"
-    qm set "$vmid" --sshkeys "$SSH_PUB_KEY"
-    qm set "$vmid" --ipconfig0 "ip=dhcp"
-    qm set "$vmid" --ciupgrade 1
-    log "Cloud-init configured."
-
-    # Start and wait for cloud-init + SSH
-    qm start "$vmid"
-    log "VM started. Waiting for boot + DHCP..."
-
-    # Get MAC address from VM config
-    local mac
-    mac=$(qm config "$vmid" | grep '^net0' | grep -oiE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}' | head -1)
-    [[ -n "$mac" ]] || die "Could not find MAC address for VM ${vmid}"
-    local mac_lower
-    mac_lower=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
-    log "MAC: ${mac}"
-
-    # Wait for cloud-init to bring up networking
-    sleep 30
-
-    # Find IP — scan the bridge interface for our MAC
+    # Get IP
     local ip=""
-    log "Scanning for VM on network..."
-
-    # Install arp-scan if not present
-    command -v arp-scan >/dev/null 2>&1 || apt-get install -y arp-scan >/dev/null 2>&1
-
     for attempt in $(seq 1 20); do
-        # arp-scan is the most reliable way to find a MAC on a bridge
-        if command -v arp-scan >/dev/null 2>&1; then
-            ip=$(arp-scan --interface="${BRIDGE}" --localnet 2>/dev/null \
-                | grep -i "$mac_lower" | awk '{print $1}' | head -1) || true
-        fi
-
-        # Fallback: check ARP table
-        if [[ -z "$ip" ]]; then
-            ip=$(ip -4 neigh show dev "${BRIDGE}" 2>/dev/null \
-                | grep -i "$mac_lower" | awk '{print $1}' | head -1) || true
-        fi
-
-        if [[ -n "$ip" ]]; then
-            log "VM IP: ${ip} (found after ~$((30 + attempt * 5))s)"
+        ip=$(pct exec "$ctid" -- hostname -I 2>/dev/null | awk '{print $1}') || true
+        if [[ -n "$ip" && "$ip" != *":"* ]]; then
+            log "Container IP: ${ip}"
             break
         fi
-
-        if (( attempt % 5 == 0 )); then
-            log "Still scanning... (attempt ${attempt}/20)"
-        fi
-
-        sleep 5
+        ip=""
+        sleep 3
     done
+    [[ -n "$ip" ]] || die "Could not get IP for container ${ctid}"
 
-    [[ -n "$ip" ]] || die "Could not find VM ${vmid} on the network after 130s. Is DHCP running on ${BRIDGE}?"
+    # Set up CI user + SSH
+    log "Configuring CI user and SSH..."
+    pct exec "$ctid" -- bash -c "
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y --no-install-recommends openssh-server sudo
+        systemctl enable ssh
+        systemctl start ssh
 
-    log "Waiting for SSH..."
-    wait_for_ssh "$ip" 180
+        id ${SSH_USER} >/dev/null 2>&1 || useradd -m -s /bin/bash ${SSH_USER}
+        echo '${SSH_USER} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${SSH_USER}
+        chmod 440 /etc/sudoers.d/${SSH_USER}
+        mkdir -p /home/${SSH_USER}/.ssh
+        echo '${PUB_KEY}' > /home/${SSH_USER}/.ssh/authorized_keys
+        chown -R ${SSH_USER}:${SSH_USER} /home/${SSH_USER}/.ssh
+        chmod 700 /home/${SSH_USER}/.ssh
+        chmod 600 /home/${SSH_USER}/.ssh/authorized_keys
+    "
 
-    # Install all tools
-    log "Installing CI tools..."
+    wait_for_ssh "$ip" 60
+
+    # Install all CI tools
+    log "Installing CI tools (this takes 10-20 minutes)..."
     # shellcheck disable=SC2086
     scp $SSH_OPTS "${CI_ROOT}/runners/install_linux_runner.sh" "${SSH_USER}@${ip}:/tmp/install.sh"
     # shellcheck disable=SC2086
@@ -161,10 +130,10 @@ setup_linux_template() {
 
     # Stop and convert to template
     log "Converting to template..."
-    qm stop "$vmid"
-    sleep 5
-    qm set "$vmid" --template 1
-    log "Linux runner template ready (VMID ${vmid})"
+    pct stop "$ctid"
+    sleep 3
+    pct set "$ctid" --template 1
+    log "Linux runner template ready (CTID ${ctid})"
 }
 
 ########################################

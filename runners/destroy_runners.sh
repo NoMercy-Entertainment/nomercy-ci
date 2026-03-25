@@ -49,21 +49,32 @@ deregister_github_runners() {
 }
 
 ########################################
-# Destroy Proxmox VMs
+# Destroy Proxmox VMs and LXC containers
 ########################################
 
-destroy_runner_vms() {
+destroy_runner_resources() {
     local name_filter="${1:-runner-}"
 
-    log "Finding runner VMs in range ${RUNNER_ID_MIN}-${RUNNER_ID_MAX}..."
-    for ((vmid=RUNNER_ID_MIN; vmid<=RUNNER_ID_MAX; vmid++)); do
-        if qm config "$vmid" >/dev/null 2>&1; then
+    log "Finding runner LXCs in range ${RUNNER_ID_MIN}-${RUNNER_ID_MAX}..."
+    for ((id=RUNNER_ID_MIN; id<=RUNNER_ID_MAX; id++)); do
+        # Check LXC
+        if pct config "$id" >/dev/null 2>&1; then
+            local ct_name
+            ct_name=$(pct config "$id" | awk '/^hostname:/{print $2}')
+            if [[ "$ct_name" == ${name_filter}* ]]; then
+                log "Destroying LXC ${id} (${ct_name})..."
+                pct stop "$id" --timeout 10 2>/dev/null || true
+                pct destroy "$id" --purge 2>/dev/null || true
+            fi
+        fi
+        # Check VM
+        if qm config "$id" >/dev/null 2>&1; then
             local vm_name
-            vm_name=$(qm config "$vmid" | grep '^name:' | awk '{print $2}')
+            vm_name=$(qm config "$id" | grep '^name:' | awk '{print $2}')
             if [[ "$vm_name" == ${name_filter}* ]]; then
-                log "Destroying VM ${vmid} (${vm_name})..."
-                qm stop "$vmid" --timeout 15 2>/dev/null || true
-                qm destroy "$vmid" --purge 1 2>/dev/null || true
+                log "Destroying VM ${id} (${vm_name})..."
+                qm stop "$id" --timeout 15 2>/dev/null || true
+                qm destroy "$id" --purge 1 2>/dev/null || true
             fi
         fi
     done
@@ -82,11 +93,11 @@ case "$FILTER" in
         ;;
     linux|macos|windows)
         deregister_github_runners "runner-${FILTER}-"
-        destroy_runner_vms "runner-${FILTER}-"
+        destroy_runner_resources "runner-${FILTER}-"
         ;;
     all)
         deregister_github_runners "runner-"
-        destroy_runner_vms "runner-"
+        destroy_runner_resources "runner-"
         ;;
     *)
         die "Usage: $0 <all|linux|macos|windows|--vm VMID>"

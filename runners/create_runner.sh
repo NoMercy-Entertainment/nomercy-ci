@@ -83,35 +83,54 @@ create_runner() {
             ;;
     esac
 
-    # Check template exists
-    if ! qm config "$template" >/dev/null 2>&1; then
-        die "Template ${template} (${os}) not found. Run setup/setup_runner_templates.sh first."
-    fi
-
-    log "[${name}] Cloning template ${template} → VMID ${vmid}"
-    qm clone "$template" "$vmid" --name "$name"
-    qm set "$vmid" --cores "$cores" --memory "$mem"
-    qm start "$vmid"
-
-    log "[${name}] Waiting for VM to boot..."
     local ip=""
-    case "$os" in
-        linux)
-            sleep 15
-            ip=$(vm_get_ip "$vmid")
-            wait_for_ssh "$ip" 120
-            ;;
-        macos)
-            sleep 30
-            ip=$(vm_get_ip "$vmid")
-            wait_for_ssh "$ip" 180
-            ;;
-        windows)
-            sleep 45
-            ip=$(vm_get_ip "$vmid")
-            wait_for_ssh "$ip" 300
-            ;;
-    esac
+
+    if [[ "$os" == "linux" ]]; then
+        # Linux uses LXC — fast clone, instant networking
+        if ! pct config "$template" >/dev/null 2>&1; then
+            die "LXC template ${template} (${os}) not found. Run runners/setup_runner_templates.sh linux first."
+        fi
+
+        log "[${name}] Cloning LXC template ${template} → CTID ${vmid}"
+        pct clone "$template" "$vmid" --hostname "$name"
+        pct set "$vmid" --cores "$cores" --memory "$mem"
+        pct start "$vmid"
+
+        log "[${name}] Waiting for container to boot..."
+        sleep 5
+        for attempt in $(seq 1 20); do
+            ip=$(pct exec "$vmid" -- hostname -I 2>/dev/null | awk '{print $1}') || true
+            if [[ -n "$ip" && "$ip" != *":"* ]]; then break; fi
+            ip=""
+            sleep 3
+        done
+        [[ -n "$ip" ]] || die "[${name}] Could not get IP"
+        wait_for_ssh "$ip" 60
+    else
+        # macOS/Windows use KVM VMs
+        if ! qm config "$template" >/dev/null 2>&1; then
+            die "VM template ${template} (${os}) not found. Run runners/setup_runner_templates.sh ${os} first."
+        fi
+
+        log "[${name}] Cloning VM template ${template} → VMID ${vmid}"
+        qm clone "$template" "$vmid" --name "$name"
+        qm set "$vmid" --cores "$cores" --memory "$mem"
+        qm start "$vmid"
+
+        log "[${name}] Waiting for VM to boot..."
+        case "$os" in
+            macos)
+                sleep 30
+                ip=$(vm_get_ip "$vmid")
+                wait_for_ssh "$ip" 180
+                ;;
+            windows)
+                sleep 45
+                ip=$(vm_get_ip "$vmid")
+                wait_for_ssh "$ip" 300
+                ;;
+        esac
+    fi
 
     [[ -n "$ip" ]] || die "[${name}] Could not get IP"
     log "[${name}] IP: ${ip}"
