@@ -89,7 +89,7 @@ create_runner() {
     fi
 
     log "[${name}] Cloning template ${template} → VMID ${vmid}"
-    qm clone "$template" "$vmid" --name "$name" --full 1
+    qm clone "$template" "$vmid" --name "$name"
     qm set "$vmid" --cores "$cores" --memory "$mem"
     qm start "$vmid"
 
