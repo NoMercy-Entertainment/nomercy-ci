@@ -27,7 +27,7 @@ cp .env.example .env
 # macOS — creates VM shell, manual OS install required (see output for steps)
 ./runners/setup_runner_templates.sh macos
 
-# Windows — creates VM shell, manual or unattended OS install (see output for steps)
+# Windows — fully automated (unattended install + sysprep, ~20-40 min)
 ./runners/setup_runner_templates.sh windows
 ```
 
