@@ -120,8 +120,8 @@ setup_linux_template() {
         # Ping broadcast to populate ARP table
         ping -c 1 -W 1 "${subnet}.255" >/dev/null 2>&1 || true
 
-        # Check ARP table for our MAC
-        ip=$(ip neigh show 2>/dev/null | grep -i "$mac" | awk '{print $1}' | head -1) || true
+        # Check ARP table for our MAC (IPv4 only, skip fe80:: link-local)
+        ip=$(ip -4 neigh show 2>/dev/null | grep -i "$mac" | awk '{print $1}' | head -1) || true
 
         if [[ -n "$ip" ]]; then
             log "VM IP: ${ip} (found after ${attempt} attempts)"
