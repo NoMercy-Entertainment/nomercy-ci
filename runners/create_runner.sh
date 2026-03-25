@@ -26,7 +26,9 @@ OS_TYPE="${1:-}"
 COUNT="${2:-1}"
 
 [[ -n "$OS_TYPE" ]] || die "Usage: $0 <linux|macos|windows|all> [count]"
-[[ -n "$RUNNER_GH_TOKEN" ]] || die "RUNNER_GH_TOKEN not set. Need a PAT with admin:org scope."
+[[ -n "$RUNNER_GH_TOKEN" ]] || die "RUNNER_GH_TOKEN not set in .env"
+[[ -n "$RUNNER_ORG" ]] || die "RUNNER_ORG not set in .env"
+[[ -n "$RUNNER_VERSION" ]] || die "RUNNER_VERSION not set in .env"
 
 ########################################
 # Get registration token from GitHub
