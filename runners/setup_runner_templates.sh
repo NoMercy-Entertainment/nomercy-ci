@@ -78,7 +78,9 @@ setup_linux_template() {
         --memory "$RUNNER_LINUX_MEM" \
         --net0 "virtio,bridge=${BRIDGE}" \
         --scsihw virtio-scsi-single \
-        --agent enabled=1
+        --serial0 socket \
+        --vga serial0 \
+        --agent enabled=1,fstrim_cloned_disks=1
 
     # Import disk
     qm set "$vmid" --scsi0 "${STORAGE}:0,import-from=${img},discard=on,ssd=1"
@@ -92,13 +94,48 @@ setup_linux_template() {
     qm set "$vmid" --ipconfig0 "ip=dhcp"
     qm set "$vmid" --ciupgrade 1
 
-    # Start and wait for SSH
+    # Start and wait for cloud-init + SSH
     qm start "$vmid"
-    log "Waiting for VM to boot..."
-    sleep 20
-    local ip
-    ip=$(vm_get_ip "$vmid")
-    wait_for_ssh "$ip" 120
+    log "Waiting for cloud-init to complete (this takes 30-60s)..."
+    sleep 10
+
+    # Get IP — try guest agent first, fall back to ARP scan
+    local ip=""
+    log "Getting VM IP address..."
+    for attempt in $(seq 1 30); do
+        # Try guest agent
+        ip=$(qm guest cmd "$vmid" network-get-interfaces 2>/dev/null \
+            | jq -r '[.[].["ip-addresses"][]
+                | select(.["ip-address-type"] == "ipv4")
+                | .["ip-address"]
+                | select(startswith("127.") | not)]
+                | first // empty' 2>/dev/null) || true
+
+        # Fall back to cloud-init log parsing if agent not available
+        if [[ -z "$ip" ]]; then
+            ip=$(qm guest exec "$vmid" -- cat /var/lib/cloud/data/instance-id 2>/dev/null && \
+                qm guest exec "$vmid" -- hostname -I 2>/dev/null | awk '{print $1}') || true
+        fi
+
+        # Fall back to ARP table
+        if [[ -z "$ip" ]]; then
+            local mac
+            mac=$(qm config "$vmid" | grep '^net0' | grep -oP '[0-9A-Fa-f:]{17}' | head -1)
+            if [[ -n "$mac" ]]; then
+                ip=$(arp -n 2>/dev/null | grep -i "$mac" | awk '{print $1}') || true
+            fi
+        fi
+
+        if [[ -n "$ip" ]]; then
+            break
+        fi
+        sleep 5
+    done
+
+    [[ -n "$ip" ]] || die "Could not get IP for VM ${vmid} after 150s"
+    log "VM IP: ${ip}"
+
+    wait_for_ssh "$ip" 180
 
     # Install all tools
     log "Installing CI tools..."
