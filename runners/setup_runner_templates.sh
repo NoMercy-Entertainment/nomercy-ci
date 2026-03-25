@@ -101,45 +101,44 @@ setup_linux_template() {
 
     # Start and wait for cloud-init + SSH
     qm start "$vmid"
-    log "Waiting for cloud-init to complete (this takes 30-60s)..."
-    sleep 10
+    log "VM started. Waiting for DHCP lease..."
 
-    # Get IP — try guest agent first, fall back to ARP scan
+    # Get MAC address from VM config
+    local mac
+    mac=$(qm config "$vmid" | grep '^net0' | grep -oiE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}' | head -1)
+    [[ -n "$mac" ]] || die "Could not find MAC address for VM ${vmid}"
+    log "MAC: ${mac}"
+
+    # Get IP by matching MAC in ARP table
+    # Ping broadcast first to populate ARP, then grep for our MAC
     local ip=""
-    log "Getting VM IP address..."
-    for attempt in $(seq 1 30); do
-        # Try guest agent
-        ip=$(qm guest cmd "$vmid" network-get-interfaces 2>/dev/null \
-            | jq -r '[.[].["ip-addresses"][]
-                | select(.["ip-address-type"] == "ipv4")
-                | .["ip-address"]
-                | select(startswith("127.") | not)]
-                | first // empty' 2>/dev/null) || true
+    local bridge_ip
+    bridge_ip=$(ip -4 addr show "${BRIDGE}" 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+    local subnet="${bridge_ip%.*}"
 
-        # Fall back to cloud-init log parsing if agent not available
-        if [[ -z "$ip" ]]; then
-            ip=$(qm guest exec "$vmid" -- cat /var/lib/cloud/data/instance-id 2>/dev/null && \
-                qm guest exec "$vmid" -- hostname -I 2>/dev/null | awk '{print $1}') || true
-        fi
+    for attempt in $(seq 1 40); do
+        # Ping broadcast to populate ARP table
+        ping -c 1 -W 1 "${subnet}.255" >/dev/null 2>&1 || true
 
-        # Fall back to ARP table
-        if [[ -z "$ip" ]]; then
-            local mac
-            mac=$(qm config "$vmid" | grep '^net0' | grep -oP '[0-9A-Fa-f:]{17}' | head -1)
-            if [[ -n "$mac" ]]; then
-                ip=$(arp -n 2>/dev/null | grep -i "$mac" | awk '{print $1}') || true
-            fi
-        fi
+        # Check ARP table for our MAC
+        ip=$(ip neigh show 2>/dev/null | grep -i "$mac" | awk '{print $1}' | head -1) || true
 
         if [[ -n "$ip" ]]; then
+            log "VM IP: ${ip} (found after ${attempt} attempts)"
             break
         fi
-        sleep 5
+
+        # Progress indicator every 10 attempts
+        if (( attempt % 10 == 0 )); then
+            log "Still waiting for DHCP... (${attempt}/40)"
+        fi
+
+        sleep 3
     done
 
-    [[ -n "$ip" ]] || die "Could not get IP for VM ${vmid} after 150s"
-    log "VM IP: ${ip}"
+    [[ -n "$ip" ]] || die "Could not get IP for VM ${vmid} after 120s. Check DHCP and network bridge."
 
+    log "Waiting for SSH..."
     wait_for_ssh "$ip" 180
 
     # Install all tools
