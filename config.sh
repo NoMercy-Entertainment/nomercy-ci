@@ -2,6 +2,14 @@
 # Central configuration for NoMercy CI
 # Source this file from all other scripts: source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 
+# Load .env if it exists
+_CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${_CI_DIR}/.env" ]]; then
+    set -a
+    source "${_CI_DIR}/.env"
+    set +a
+fi
+
 # Proxmox node name
 PVE_NODE="pve"
 
