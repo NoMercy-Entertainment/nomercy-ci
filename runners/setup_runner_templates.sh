@@ -83,9 +83,9 @@ setup_linux_template() {
         --agent enabled=1,fstrim_cloned_disks=1
 
     # Import disk
-    log "Importing disk image..."
+    log "Importing disk image (transfer + format conversion — this can take a few minutes on LVM)..."
     qm set "$vmid" --scsi0 "${STORAGE}:0,import-from=${img},discard=on,ssd=1"
-    log "Resizing disk to 50G..."
+    log "Disk imported. Resizing to 50G..."
     qm resize "$vmid" scsi0 50G
     log "Setting boot order..."
     qm set "$vmid" --boot order=scsi0
