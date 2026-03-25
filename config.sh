@@ -62,3 +62,43 @@ WIN_BALLOON=4096 # MB (min, ballooning returns unused RAM to host)
 
 # Webhook server port (used by webhook/webhook_server.py)
 WEBHOOK_PORT=9000
+
+# ── GitHub Actions Self-Hosted Runners ──────────────────────────────────────
+
+# GitHub PAT with admin:org scope (for runner registration)
+# Set in environment or /opt/nomercy-ci/.env
+RUNNER_GH_TOKEN="${RUNNER_GH_TOKEN:-${GH_TOKEN:-}}"
+RUNNER_ORG="NoMercy-Entertainment"
+RUNNER_GROUP="${RUNNER_GROUP:-Default}"
+RUNNER_VERSION="2.322.0"
+
+# Runner VM template IDs (created by setup/setup_runner_templates.sh)
+declare -A RUNNER_TEMPLATES=(
+    ["linux"]=5000
+    ["macos"]=5001
+    ["windows"]=5002
+)
+
+# Runner VM ID range (ephemeral runners cloned from templates)
+RUNNER_ID_MIN=5100
+RUNNER_ID_MAX=5199
+
+# Runner resource limits per OS
+RUNNER_LINUX_CORES=4
+RUNNER_LINUX_MEM=8192
+
+RUNNER_MACOS_CORES=4
+RUNNER_MACOS_MEM=8192
+
+RUNNER_WINDOWS_CORES=4
+RUNNER_WINDOWS_MEM=8192
+
+# Runner labels per OS
+RUNNER_LINUX_LABELS="self-hosted,Linux,X64"
+RUNNER_MACOS_LABELS="self-hosted,macOS,ARM64"
+RUNNER_WINDOWS_LABELS="self-hosted,Windows,X64"
+
+# Cloud images for runner templates
+RUNNER_LINUX_IMAGE="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+RUNNER_MACOS_ISO="${RUNNER_MACOS_ISO:-nas:iso/macOS-Sequoia-15.iso}"  # provide your own
+RUNNER_WINDOWS_ISO="${WIN_ISOS[win11]}"
