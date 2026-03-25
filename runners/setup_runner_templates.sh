@@ -83,16 +83,21 @@ setup_linux_template() {
         --agent enabled=1,fstrim_cloned_disks=1
 
     # Import disk
+    log "Importing disk image..."
     qm set "$vmid" --scsi0 "${STORAGE}:0,import-from=${img},discard=on,ssd=1"
+    log "Resizing disk to 50G..."
     qm resize "$vmid" scsi0 50G
+    log "Setting boot order..."
     qm set "$vmid" --boot order=scsi0
 
     # Cloud-init
+    log "Configuring cloud-init..."
     qm set "$vmid" --ide2 "${STORAGE}:cloudinit"
     qm set "$vmid" --ciuser "$SSH_USER"
     qm set "$vmid" --sshkeys "$SSH_PUB_KEY"
     qm set "$vmid" --ipconfig0 "ip=dhcp"
     qm set "$vmid" --ciupgrade 1
+    log "Cloud-init configured."
 
     # Start and wait for cloud-init + SSH
     qm start "$vmid"
