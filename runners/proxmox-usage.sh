@@ -192,6 +192,32 @@ header "DOCKER (GUESTS)"
 
 found_guest_docker=0
 
+# Reusable function to print docker containers grouped by type
+print_guest_docker() {
+    local docker_out="$1"
+    local runner_count=0
+    local svc_lines=""
+
+    while IFS=$'\t' read -r cname cstatus cimage; do
+        [[ -n "$cname" ]] || continue
+        if [[ "$cname" == *runner* ]]; then
+            runner_count=$((runner_count + 1))
+        else
+            svc_lines="${svc_lines}$(printf '    %-44s %-24s %s' "$cname" "$cstatus" "$cimage")"$'\n'
+        fi
+    done <<< "$docker_out"
+
+    if [[ -n "$svc_lines" ]]; then
+        printf "    %b%-44s %-24s %s%b\n" "$B" "Service" "Status" "Image" "$N"
+        printf '%s' "$svc_lines"
+        echo ""
+    fi
+
+    if (( runner_count > 0 )); then
+        printf "    %bGitHub Runners: %d active%b\n" "$B" "$runner_count" "$N"
+    fi
+}
+
 # LXC guests
 for ctid in $(pct list 2>/dev/null | awk '/running/{print $1}'); do
     ct_name=$(pct config "$ctid" 2>/dev/null | awk '/^hostname:/{print $2}')
@@ -200,29 +226,7 @@ for ctid in $(pct list 2>/dev/null | awk '/running/{print $1}'); do
     found_guest_docker=1
 
     printf "\n  %bLXC %s (%s)%b\n\n" "$B" "$ctid" "${ct_name:--}" "$N"
-
-    # Separate runners from services for readability
-    local runners="" services=""
-    while IFS=$'\t' read -r cname cstatus cimage; do
-        if [[ "$cname" == *runner* ]]; then
-            runners+="$(printf "    %-44s %s\n" "$cname" "$cstatus")\n"
-        else
-            services+="$(printf "    %-44s %-24s %s\n" "$cname" "$cstatus" "$cimage")\n"
-        fi
-    done <<< "$docker_out"
-
-    if [[ -n "$services" ]]; then
-        printf "    %b%-44s %-24s %s%b\n" "$B" "Service" "Status" "Image" "$N"
-        printf '%b' "$services"
-        echo ""
-    fi
-
-    if [[ -n "$runners" ]]; then
-        local runner_count
-        runner_count=$(echo -e "$runners" | grep -c '\S' || true)
-        printf "    %bRunners (%d):%b\n" "$B" "$runner_count" "$N"
-        printf '%b' "$runners"
-    fi
+    print_guest_docker "$docker_out"
 done
 
 # VM guests
@@ -238,28 +242,7 @@ for vmid in $(qm list 2>/dev/null | awk '/running/{print $1}'); do
     found_guest_docker=1
 
     printf "\n  %bVM %s (%s @ %s)%b\n\n" "$B" "$vmid" "${vm_name:--}" "$ip" "$N"
-
-    local runners="" services=""
-    while IFS=$'\t' read -r cname cstatus cimage; do
-        if [[ "$cname" == *runner* ]]; then
-            runners+="$(printf "    %-44s %s\n" "$cname" "$cstatus")\n"
-        else
-            services+="$(printf "    %-44s %-24s %s\n" "$cname" "$cstatus" "$cimage")\n"
-        fi
-    done <<< "$docker_out"
-
-    if [[ -n "$services" ]]; then
-        printf "    %b%-44s %-24s %s%b\n" "$B" "Service" "Status" "Image" "$N"
-        printf '%b' "$services"
-        echo ""
-    fi
-
-    if [[ -n "$runners" ]]; then
-        local runner_count
-        runner_count=$(echo -e "$runners" | grep -c '\S' || true)
-        printf "    %bRunners (%d):%b\n" "$B" "$runner_count" "$N"
-        printf '%b' "$runners"
-    fi
+    print_guest_docker "$docker_out"
 done
 
 (( found_guest_docker )) || printf "  %bNo Docker found in running guests%b\n" "$D" "$N"
