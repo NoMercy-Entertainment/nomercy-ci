@@ -47,8 +47,19 @@ header "HOST"
 # =========================================================================
 
 cpu_count=$(nproc)
-cpu_load=$(awk '{print $1}' /proc/loadavg)
-cpu_pct=$(awk "BEGIN {v=int(($cpu_load/$cpu_count)*100); if(v>100)v=100; print v}")
+cpu_load=$(awk '{printf "%.2f / %.2f / %.2f", $1, $2, $3}' /proc/loadavg)
+
+# Actual CPU usage from /proc/stat (sample over 1 second)
+read -r _ u1 n1 s1 i1 w1 _ <<< "$(head -1 /proc/stat)"
+sleep 1
+read -r _ u2 n2 s2 i2 w2 _ <<< "$(head -1 /proc/stat)"
+idle=$((i2 - i1))
+total=$(( (u2+n2+s2+i2+w2) - (u1+n1+s1+i1+w1) ))
+if (( total > 0 )); then
+    cpu_pct=$(( (total - idle) * 100 / total ))
+else
+    cpu_pct=0
+fi
 
 read -r mem_total mem_avail <<< "$(awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{print t*1024,a*1024}' /proc/meminfo)"
 mem_used=$((mem_total - mem_avail))
