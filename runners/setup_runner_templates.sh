@@ -82,7 +82,7 @@ setup_linux_template() {
 
     # Import disk
     qm set "$vmid" --scsi0 "${STORAGE}:0,import-from=${img},discard=on,ssd=1"
-    qm resize "$vmid" scsi0 100G
+    qm resize "$vmid" scsi0 50G
     qm set "$vmid" --boot order=scsi0
 
     # Cloud-init
@@ -151,7 +151,7 @@ setup_macos_template() {
         --agent enabled=1
 
     # Create disk
-    qm set "$vmid" --scsi0 "${STORAGE}:100,discard=on,ssd=1"
+    qm set "$vmid" --scsi0 "${STORAGE}:50,discard=on,ssd=1"
     qm set "$vmid" --ide0 "${RUNNER_MACOS_ISO},media=cdrom"
     qm set "$vmid" --boot "order=ide0;scsi0"
     qm set "$vmid" --efidisk0 "${STORAGE}:1"
@@ -246,7 +246,7 @@ BATCH
         --bios ovmf \
         --efidisk0 "${STORAGE}:1,efitype=4m" \
         --scsihw virtio-scsi-pci \
-        --scsi0 "${STORAGE}:100" \
+        --scsi0 "${STORAGE}:50" \
         --sata0 "${VIRTIO_ISO},media=cdrom" \
         --sata1 "${ISO_STORAGE}:iso/${iso_name},media=cdrom" \
         --sata2 "${RUNNER_WINDOWS_ISO},media=cdrom" \
