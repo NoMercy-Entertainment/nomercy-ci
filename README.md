@@ -95,9 +95,9 @@ macOS in a VM requires OpenCore as the bootloader. The script handles this autom
 
 1. Downloads OpenCore v21 from [thenickdude/KVM-Opencore](https://github.com/thenickdude/KVM-Opencore)
 2. Downloads macOS recovery from Apple CDN (version configurable via `RUNNER_MACOS_VERSION`)
-3. Imports both as disk images (not CD-ROMs)
-4. Configures Apple SMC passthrough + CPU flags
-5. All disks on SATA (macOS has no VirtIO SCSI drivers)
+3. Imports both as disk images — OpenCore on `sata1`, recovery on `sata0`, install target on `sata2`
+4. Configures Apple SMC passthrough, SMBIOS, CPU flags (GenuineIntel + invtsc)
+5. All disks on SATA (macOS has no VirtIO SCSI drivers, no IDE)
 
 The script creates the VM, starts it, then waits for SSH. Complete the install from the Proxmox console while the script is running:
 
@@ -226,7 +226,11 @@ All settings in `.env` (loaded by `config.sh`).
 | `RUNNER_WINDOWS_CORES` / `_MEM` | `4` / `8192` | Resources per Windows runner |
 | `RUNNER_OPENCORE_ISO` | — | OpenCore ISO on Proxmox storage |
 | `RUNNER_MACOS_VERSION` | `sonoma` | macOS version to download from Apple |
-| `RUNNER_WINDOWS_ISO` | — | Windows ISO on Proxmox storage |
+| `RUNNER_WINDOWS_ISO` | — | Windows 10 ISO on Proxmox storage |
+| `STORAGE` | `local-lvm` | Proxmox storage for VM/LXC disks |
+| `BRIDGE` | `vmbr0` | Network bridge |
+| `ISO_STORAGE` | `nas` | Proxmox storage for ISO files |
+| `VIRTIO_ISO` | `nas:iso/virtio-win.iso` | VirtIO drivers ISO for Windows |
 
 ### Test matrix settings
 

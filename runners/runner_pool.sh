@@ -33,7 +33,7 @@ echo $$ > /tmp/nomercy-runner-pool.pid
 
 log "=========================================="
 log " NoMercy Ephemeral Runner Pool"
-log " OS: ${OS_TYPE}  Pool size: ${POOL_SIZE}"
+log " OS: ${OS_TYPE}  Pool: Linux=${POOL_LINUX} macOS=${POOL_MACOS} Windows=${POOL_WINDOWS}"
 log "=========================================="
 
 ########################################

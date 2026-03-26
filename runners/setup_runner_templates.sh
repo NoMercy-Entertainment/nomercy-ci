@@ -251,7 +251,7 @@ setup_macos_template() {
     qm importdisk "$vmid" "$opencore_path" "${STORAGE}" >/dev/null
     local oc_disk
     oc_disk=$(qm config "$vmid" | grep '^unused' | tail -1 | awk '{print $2}')
-    qm set "$vmid" --ide2 "$oc_disk"
+    qm set "$vmid" --sata1 "$oc_disk"
 
     # Import macOS BaseSystem as a disk (OpenCore reads disks, not CD-ROMs)
     log "Importing macOS recovery disk..."
@@ -260,8 +260,8 @@ setup_macos_template() {
     mac_disk=$(qm config "$vmid" | grep '^unused' | tail -1 | awk '{print $2}')
     qm set "$vmid" --sata0 "$mac_disk"
 
-    # Boot from OpenCore first
-    qm set "$vmid" --boot "order=ide2;sata2"
+    # Boot from OpenCore (sata1) first, then main disk (sata2)
+    qm set "$vmid" --boot "order=sata1;sata2"
 
     # Add Apple SMC key + CPU flags directly to config
     # (qm set mangles the args string, so write directly)

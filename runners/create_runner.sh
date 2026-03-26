@@ -8,7 +8,7 @@
 #   ./runners/create_runner.sh all [count]       # one of each
 #
 # Prerequisites:
-#   - Runner templates created by setup/setup_runner_templates.sh
+#   - Runner templates created by runners/setup_runner_templates.sh
 #   - RUNNER_GH_TOKEN set (PAT with admin:org scope)
 
 set -Eeuo pipefail
