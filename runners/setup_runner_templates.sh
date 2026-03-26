@@ -143,9 +143,12 @@ setup_linux_template() {
 setup_macos_template() {
     local vmid=${RUNNER_TEMPLATES[macos]}
     local name="runner-macos-template"
+    local osk='ourhardworkbythesewordsguardedpleasedontsteal(c)AppleComputerInc'
 
     log "=== macOS Runner Template (VMID ${vmid}) ==="
     validate_env macos
+
+    [[ -n "$RUNNER_OPENCORE_ISO" ]] || die "RUNNER_OPENCORE_ISO not set in .env"
 
     if qm config "$vmid" >/dev/null 2>&1; then
         log "Removing existing template ${vmid}..."
@@ -154,9 +157,20 @@ setup_macos_template() {
         qm destroy "$vmid" --purge 1 2>/dev/null || true
     fi
 
-    # macOS requires manual ISO preparation + OSK passthrough
-    # The ISO must be prepared separately (e.g. via macOS-Simple-KVM or OSX-KVM)
-    log "Creating macOS VM shell..."
+    # Download OpenCore ISO if not present
+    local opencore_path
+    opencore_path=$(pvesm path "${RUNNER_OPENCORE_ISO}" 2>/dev/null) || true
+    if [[ ! -f "$opencore_path" ]]; then
+        log "Downloading OpenCore ISO..."
+        local iso_dir
+        iso_dir=$(dirname "$opencore_path" 2>/dev/null || echo "/mnt/pve/nas/template/iso")
+        curl -fSL "https://github.com/thenickdude/KVM-Opencore/releases/download/v21/OpenCore-v21.iso.gz" \
+            -o "${iso_dir}/OpenCore-v21.iso.gz"
+        gunzip -f "${iso_dir}/OpenCore-v21.iso.gz"
+        log "OpenCore ISO downloaded."
+    fi
+
+    log "Creating macOS VM with OpenCore bootloader..."
     qm create "$vmid" \
         --name "$name" \
         --ostype other \
@@ -167,31 +181,54 @@ setup_macos_template() {
         --bios ovmf \
         --machine q35 \
         --cpu host \
-        --args "-device isa-applesmc,osk=$(cat /opt/nomercy-ci/.osk 2>/dev/null || echo 'INSERT_OSK_HERE')" \
         --agent enabled=1
 
-    # Create disk
+    # Disks
+    log "Creating disks..."
     qm set "$vmid" --scsi0 "${STORAGE}:50,discard=on,ssd=1"
-    qm set "$vmid" --ide0 "${RUNNER_MACOS_ISO},media=cdrom"
-    qm set "$vmid" --boot "order=ide0;scsi0"
     qm set "$vmid" --efidisk0 "${STORAGE}:1"
+    qm set "$vmid" --ide0 "${RUNNER_MACOS_ISO},media=cdrom"
+    qm set "$vmid" --ide2 "${RUNNER_OPENCORE_ISO},media=cdrom"
+
+    # Boot from OpenCore first — it chainloads the macOS installer
+    qm set "$vmid" --boot "order=ide2;scsi0"
+
+    # Add Apple SMC key + CPU flags directly to config
+    # (qm set mangles the args string, so write directly)
+    log "Configuring Apple SMC passthrough and CPU flags..."
+    sed -i '/^args:/d' "/etc/pve/qemu-server/${vmid}.conf"
+    cat >> "/etc/pve/qemu-server/${vmid}.conf" << ARGSEOF
+args: -device isa-applesmc,osk="${osk}" -smbios type=2 -device usb-kbd,bus=ehci.0,port=2 -global nec-usb-xhci.msi=off -global ICH9-LPC.acpi-pci-hotplug-with-bridge-support=off -cpu host,kvm=on,vendor=GenuineIntel,+kvm_pv_unhalt,+kvm_pv_eoi,+hypervisor,+invtsc
+ARGSEOF
+
+    log "Starting VM..."
+    qm start "$vmid"
 
     log ""
-    log "┌─────────────────────────────────────────────────────────┐"
-    log "│ macOS template created as VM ${vmid} but NOT installed. │"
-    log "│                                                         │"
-    log "│ Manual steps required:                                  │"
-    log "│ 1. Boot VM from Proxmox console                        │"
-    log "│ 2. Install macOS from the ISO                          │"
-    log "│ 3. Enable SSH: System Settings → General → Sharing     │"
-    log "│ 4. Create user '${SSH_USER}' with sudo access          │"
-    log "│ 5. Install SSH key:                                    │"
-    log "│    mkdir -p ~/.ssh                                     │"
-    log "│    echo '${PUB_KEY}' >> ~/.ssh/authorized_keys         │"
-    log "│ 6. Run: runners/install_macos_runner.sh on the VM      │"
-    log "│ 7. Shut down and convert:                              │"
-    log "│    qm set ${vmid} --template 1                         │"
-    log "└─────────────────────────────────────────────────────────┘"
+    log "============================================================"
+    log " macOS VM ${vmid} is booting with OpenCore."
+    log ""
+    log " Open the Proxmox console and complete the install:"
+    log ""
+    log " 1. OpenCore boot picker appears — select the macOS installer"
+    log " 2. Open Disk Utility — erase scsi0 as APFS"
+    log " 3. Install macOS to that disk"
+    log " 4. VM reboots — select 'macOS Installer' in OpenCore again"
+    log " 5. Wait for install to finish, VM reboots into macOS"
+    log ""
+    log " After macOS is running:"
+    log " 6. System Settings → General → Sharing → enable Remote Login"
+    log " 7. Create user '${SSH_USER}' with admin access"
+    log " 8. Open Terminal and run:"
+    log "    mkdir -p ~/.ssh"
+    log "    echo '${PUB_KEY}' >> ~/.ssh/authorized_keys"
+    log " 9. Run the tool installer from Proxmox:"
+    log "    scp ${SSH_OPTS} ${CI_ROOT}/runners/install_macos_runner.sh ${SSH_USER}@<IP>:/tmp/"
+    log "    ssh ${SSH_OPTS} ${SSH_USER}@<IP> 'chmod +x /tmp/install_macos_runner.sh && /tmp/install_macos_runner.sh'"
+    log "10. Shut down and convert to template:"
+    log "    qm stop ${vmid}"
+    log "    qm set ${vmid} --template 1"
+    log "============================================================"
 }
 
 ########################################
