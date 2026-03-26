@@ -117,7 +117,7 @@ spawn_runner() {
     if [[ "$OS_TYPE" == "linux" ]]; then
         local clone_ok=0
         for try in 1 2 3 4 5; do
-            if flock -w 120 /tmp/nomercy-clone.lock pct clone "$template" "$ctid" --hostname "$name" --full 2>/dev/null; then
+            if flock -w 600 /tmp/nomercy-clone.lock pct clone "$template" "$ctid" --hostname "$name" --full 2>/dev/null; then
                 clone_ok=1
                 break
             fi
@@ -147,8 +147,8 @@ spawn_runner() {
             return 1
         fi
     else
-        # macOS/Windows use VMs
-        qm clone "$template" "$ctid" --name "$name" || {
+        # macOS/Windows use VMs (--full required for LVM)
+        flock -w 120 /tmp/nomercy-clone.lock qm clone "$template" "$ctid" --name "$name" --full || {
             log "[${name}] Clone failed"
             return 1
         }
