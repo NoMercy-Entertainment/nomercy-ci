@@ -272,9 +272,23 @@ declare -A SLOT_PIDS
 # Build the list of (os, slot) pairs to manage
 declare -a POOL_ENTRIES=()
 
+template_exists() {
+    local os=$1
+    local tmpl=${RUNNER_TEMPLATES[$os]}
+    if [[ "$os" == "linux" ]]; then
+        pct config "$tmpl" >/dev/null 2>&1
+    else
+        qm config "$tmpl" >/dev/null 2>&1
+    fi
+}
+
 add_os_pool() {
     local os=$1
     local count=$2
+    if ! template_exists "$os"; then
+        log "Skipping ${os} — template ${RUNNER_TEMPLATES[$os]} not found"
+        return
+    fi
     for ((i=1; i<=count; i++)); do
         POOL_ENTRIES+=("${os}:${i}")
     done
