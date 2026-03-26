@@ -89,7 +89,8 @@ get_runner_config() {
 # then destroys and returns.
 spawn_runner() {
     local slot=$1
-    local name="runner-${OS_TYPE}-${slot}"
+    local prefix="${RUNNER_NAME_PREFIX:-runner}"
+    local name="${prefix}-${OS_TYPE}-${slot}"
     local template=${RUNNER_TEMPLATES[$OS_TYPE]}
 
     # Deterministic ID per OS+slot to avoid race conditions

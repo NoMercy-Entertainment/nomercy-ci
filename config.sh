@@ -78,6 +78,7 @@ WEBHOOK_PORT=9000
 RUNNER_GH_TOKEN="${RUNNER_GH_TOKEN:-}"
 RUNNER_ORG="${RUNNER_ORG:-}"
 RUNNER_GROUP="${RUNNER_GROUP:-}"
+RUNNER_NAME_PREFIX="${RUNNER_NAME_PREFIX:-runner}"
 RUNNER_VERSION="${RUNNER_VERSION:-}"
 
 # Runner VM template IDs (created by setup/setup_runner_templates.sh)
