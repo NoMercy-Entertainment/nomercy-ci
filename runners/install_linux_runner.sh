@@ -38,7 +38,9 @@ apt-get install -y --no-install-recommends \
     net-tools dnsutils iproute2 \
     sqlite3 postgresql-client mysql-client \
     ninja-build ant ruby-full \
-    apache2 nginx
+    apache2 nginx && \
+    systemctl disable --now apache2 || true && \
+    systemctl disable --now nginx || true
 
 locale-gen en_US.UTF-8
 
