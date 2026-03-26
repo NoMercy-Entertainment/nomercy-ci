@@ -1,0 +1,16 @@
+[Unit]
+Description=NoMercy Ephemeral Runner Pool
+After=network-online.target pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/nomercy-ci/.env
+ExecStart=/opt/nomercy-ci/runners/runner_pool.sh linux 10
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
