@@ -38,7 +38,7 @@ get_reg_token() {
     local response
     response=$(curl -sS -X POST \
         -H "Authorization: Bearer ${RUNNER_GH_TOKEN}" \
-        "https://api.github.com/orgs/${RUNNER_ORG}/actions/runners/registration-token" 2>&1)
+        "https://api.github.com/orgs/${RUNNER_ORG}/actions/runners/registration-token")
 
     # Check if response is valid JSON
     if ! echo "$response" | jq . >/dev/null 2>&1; then

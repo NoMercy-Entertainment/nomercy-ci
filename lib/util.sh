@@ -65,7 +65,7 @@ get_free_id() {
     local min=$1
     local max=$2
     local used
-    used=$(pvesh get /cluster/resources --type vm 2>/dev/null \
+    used=$(pvesh get /cluster/resources --type vm --output-format json 2>/dev/null \
         | jq -r '.[].vmid // empty' | sort -n)
 
     local id
