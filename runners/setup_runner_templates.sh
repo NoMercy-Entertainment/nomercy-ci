@@ -150,6 +150,12 @@ setup_macos_template() {
 
     [[ -n "$RUNNER_OPENCORE_ISO" ]] || die "RUNNER_OPENCORE_ISO not set in .env"
 
+    # Determine ISO storage path
+    ISO_STORAGE="${ISO_STORAGE:-nas}"
+    local iso_dir
+    iso_dir=$(pvesm path "${ISO_STORAGE}:iso/." 2>/dev/null | sed 's|/\.$||') \
+        || iso_dir="/mnt/pve/nas/template/iso"
+
     if qm config "$vmid" >/dev/null 2>&1; then
         log "Removing existing template ${vmid}..."
         qm stop "$vmid" 2>/dev/null || true
@@ -158,16 +164,49 @@ setup_macos_template() {
     fi
 
     # Download OpenCore ISO if not present
-    local opencore_path
-    opencore_path=$(pvesm path "${RUNNER_OPENCORE_ISO}" 2>/dev/null) || true
+    local opencore_path="${iso_dir}/OpenCore-v21.iso"
     if [[ ! -f "$opencore_path" ]]; then
         log "Downloading OpenCore ISO..."
-        local iso_dir
-        iso_dir=$(dirname "$opencore_path" 2>/dev/null || echo "/mnt/pve/nas/template/iso")
         curl -fSL "https://github.com/thenickdude/KVM-Opencore/releases/download/v21/OpenCore-v21.iso.gz" \
-            -o "${iso_dir}/OpenCore-v21.iso.gz"
-        gunzip -f "${iso_dir}/OpenCore-v21.iso.gz"
+            -o "${opencore_path}.gz"
+        gunzip -f "${opencore_path}.gz"
         log "OpenCore ISO downloaded."
+    fi
+
+    # Download macOS BaseSystem from Apple if no installer present
+    local macos_raw="${iso_dir}/macOS-BaseSystem.raw"
+    if [[ ! -f "$macos_raw" ]]; then
+        log "Downloading macOS recovery image from Apple CDN..."
+        local tmpdir
+        tmpdir=$(mktemp -d)
+
+        # Install python3 if needed
+        command -v python3 >/dev/null 2>&1 || apt-get install -y python3
+
+        # Fetch the download script
+        curl -fsSL https://raw.githubusercontent.com/kholia/OSX-KVM/master/fetch-macOS-v2.py \
+            -o "${tmpdir}/fetch.py"
+
+        # Auto-select Sonoma (option 7) and download
+        log "Fetching macOS Sonoma from Apple (this may take a few minutes)..."
+        echo "7" | python3 "${tmpdir}/fetch.py" 2>&1 | tail -5
+
+        # Find the downloaded BaseSystem.dmg
+        local dmg
+        dmg=$(find "${tmpdir}" /tmp -maxdepth 2 -name "BaseSystem.dmg" 2>/dev/null | head -1)
+        if [[ -z "$dmg" ]]; then
+            dmg=$(find . -maxdepth 2 -name "BaseSystem.dmg" 2>/dev/null | head -1)
+        fi
+
+        if [[ -z "$dmg" ]]; then
+            rm -rf "$tmpdir"
+            die "Failed to download macOS BaseSystem.dmg"
+        fi
+
+        log "Converting DMG to raw disk image..."
+        qemu-img convert -f dmg -O raw "$dmg" "$macos_raw"
+        rm -rf "$tmpdir"
+        log "macOS recovery image ready."
     fi
 
     log "Creating macOS VM with OpenCore bootloader..."
@@ -188,20 +227,21 @@ setup_macos_template() {
     qm set "$vmid" --scsi0 "${STORAGE}:50,discard=on,ssd=1"
     qm set "$vmid" --efidisk0 "${STORAGE}:1"
 
-    # macOS installer on SATA (OpenCore can see SATA, not IDE)
-    qm set "$vmid" --sata0 "${RUNNER_MACOS_ISO},media=cdrom"
-
-    # OpenCore as raw disk (it's a GPT disk image, not a bootable ISO)
-    log "Importing OpenCore disk image..."
-    local opencore_file
-    opencore_file=$(pvesm path "${RUNNER_OPENCORE_ISO}" 2>/dev/null)
-    qm importdisk "$vmid" "$opencore_file" "${STORAGE}" >/dev/null
-    # Find the imported disk name (last disk created)
+    # Import OpenCore as a disk (GPT disk image, not a bootable CD)
+    log "Importing OpenCore disk..."
+    qm importdisk "$vmid" "$opencore_path" "${STORAGE}" >/dev/null
     local oc_disk
     oc_disk=$(qm config "$vmid" | grep '^unused' | tail -1 | awk '{print $2}')
     qm set "$vmid" --ide2 "$oc_disk"
 
-    # Boot from OpenCore disk first
+    # Import macOS BaseSystem as a disk (OpenCore reads disks, not CD-ROMs)
+    log "Importing macOS recovery disk..."
+    qm importdisk "$vmid" "$macos_raw" "${STORAGE}" >/dev/null
+    local mac_disk
+    mac_disk=$(qm config "$vmid" | grep '^unused' | tail -1 | awk '{print $2}')
+    qm set "$vmid" --sata0 "$mac_disk"
+
+    # Boot from OpenCore first
     qm set "$vmid" --boot "order=ide2;scsi0"
 
     # Add Apple SMC key + CPU flags directly to config
