@@ -259,27 +259,83 @@ ARGSEOF
     log "============================================================"
     log " macOS VM ${vmid} is booting with OpenCore."
     log ""
-    log " Open the Proxmox console and complete the install:"
+    log " Complete these steps in the Proxmox console:"
     log ""
-    log " 1. OpenCore boot picker appears — select the macOS installer"
-    log " 2. Open Disk Utility — erase scsi0 as APFS"
+    log " 1. OpenCore boot picker — select the macOS installer"
+    log " 2. Disk Utility — erase the ~50 GB SATA disk as APFS"
     log " 3. Install macOS to that disk"
-    log " 4. VM reboots — select 'macOS Installer' in OpenCore again"
-    log " 5. Wait for install to finish, VM reboots into macOS"
-    log ""
-    log " After macOS is running:"
-    log " 6. System Settings → General → Sharing → enable Remote Login"
-    log " 7. Create user '${SSH_USER}' with admin access"
+    log " 4. On reboot — select 'macOS Installer' in OpenCore"
+    log " 5. After final reboot — select 'Macintosh HD'"
+    log " 6. Create user '${SSH_USER}' during setup"
+    log " 7. System Settings > General > Sharing > enable Remote Login"
     log " 8. Open Terminal and run:"
-    log "    mkdir -p ~/.ssh"
-    log "    echo '${PUB_KEY}' >> ~/.ssh/authorized_keys"
-    log " 9. Run the tool installer from Proxmox:"
-    log "    scp ${SSH_OPTS} ${CI_ROOT}/runners/install_macos_runner.sh ${SSH_USER}@<IP>:/tmp/"
-    log "    ssh ${SSH_OPTS} ${SSH_USER}@<IP> 'chmod +x /tmp/install_macos_runner.sh && /tmp/install_macos_runner.sh'"
-    log "10. Shut down and convert to template:"
-    log "    qm stop ${vmid}"
-    log "    qm set ${vmid} --template 1"
+    log "    mkdir -p ~/.ssh && echo '${PUB_KEY}' >> ~/.ssh/authorized_keys"
+    log ""
+    log " Waiting for SSH to become available..."
     log "============================================================"
+
+    # Wait for the user to complete macOS install + enable SSH
+    local ip=""
+    local attempt=0
+    while true; do
+        attempt=$((attempt + 1))
+
+        # Try to find IP via ARP scan on the bridge
+        local mac
+        mac=$(qm config "$vmid" | grep '^net0' | grep -oiE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}' | head -1)
+        if [[ -n "$mac" ]]; then
+            if command -v arp-scan >/dev/null 2>&1; then
+                ip=$(arp-scan --interface="${BRIDGE}" --localnet 2>/dev/null \
+                    | grep -i "$(echo "$mac" | tr '[:upper:]' '[:lower:]')" \
+                    | awk '{print $1}' | head -1) || true
+            fi
+            if [[ -z "$ip" ]]; then
+                ip=$(ip -4 neigh show dev "${BRIDGE}" 2>/dev/null \
+                    | grep -i "$(echo "$mac" | tr '[:upper:]' '[:lower:]')" \
+                    | awk '{print $1}' | head -1) || true
+            fi
+        fi
+
+        # Try SSH if we have an IP
+        if [[ -n "$ip" ]]; then
+            # shellcheck disable=SC2086
+            if ssh $SSH_OPTS "${SSH_USER}@${ip}" "echo ready" >/dev/null 2>&1; then
+                log "SSH connected at ${ip}!"
+                break
+            fi
+        fi
+
+        if (( attempt % 12 == 0 )); then
+            log "Still waiting for macOS install + SSH... ($(( attempt / 2 )) min elapsed)"
+        fi
+
+        sleep 10
+    done
+
+    # Install CI tools
+    log "Installing CI tools via SSH..."
+    # shellcheck disable=SC2086
+    scp $SSH_OPTS "${CI_ROOT}/runners/install_macos_runner.sh" "${SSH_USER}@${ip}:/tmp/install.sh"
+    # shellcheck disable=SC2086
+    ssh $SSH_OPTS "${SSH_USER}@${ip}" "chmod +x /tmp/install.sh && /tmp/install.sh '${RUNNER_VERSION}'" \
+        2>&1 | tee "${RUN_DIR}/macos-install.log"
+
+    # Stop and convert to template
+    log "Shutting down and converting to template..."
+    # shellcheck disable=SC2086
+    ssh $SSH_OPTS "${SSH_USER}@${ip}" "sudo shutdown -h now" 2>/dev/null || true
+    sleep 10
+
+    # Wait for VM to stop
+    for i in $(seq 1 30); do
+        status=$(qm status "$vmid" 2>/dev/null | awk '{print $2}')
+        [[ "$status" == "stopped" ]] && break
+        sleep 5
+    done
+    qm stop "$vmid" 2>/dev/null || true
+
+    qm set "$vmid" --template 1
+    log "macOS runner template ready (VMID ${vmid})"
 }
 
 ########################################
