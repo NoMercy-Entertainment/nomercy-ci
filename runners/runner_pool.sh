@@ -91,12 +91,25 @@ spawn_runner() {
     local slot=$1
     local name="runner-${OS_TYPE}-${slot}"
     local template=${RUNNER_TEMPLATES[$OS_TYPE]}
-    local ctid
 
-    ctid=$(get_free_id "$RUNNER_ID_MIN" "$RUNNER_ID_MAX") || {
-        log "[${name}] No free ID available"
-        return 1
-    }
+    # Deterministic ID per OS+slot to avoid race conditions
+    # Linux: 5100-5149, macOS: 5150-5159, Windows: 5160-5169
+    local ctid
+    case "$OS_TYPE" in
+        linux)   ctid=$(( RUNNER_ID_MIN + slot - 1 )) ;;
+        macos)   ctid=$(( RUNNER_ID_MIN + 50 + slot - 1 )) ;;
+        windows) ctid=$(( RUNNER_ID_MIN + 60 + slot - 1 )) ;;
+    esac
+
+    # Clean up if leftover from previous run
+    if pct config "$ctid" >/dev/null 2>&1; then
+        pct stop "$ctid" --timeout 10 2>/dev/null || true
+        pct destroy "$ctid" --purge 2>/dev/null || true
+    fi
+    if qm config "$ctid" >/dev/null 2>&1; then
+        qm stop "$ctid" --timeout 10 2>/dev/null || true
+        qm destroy "$ctid" --purge 1 2>/dev/null || true
+    fi
 
     log "[${name}] Spawning (CTID ${ctid})..."
 
