@@ -19,10 +19,13 @@ RUN_DIR="/var/log/nomercy-runners"
 mkdir -p "$RUN_DIR"
 export RUN_DIR
 
-OS_TYPE="${1:-}"
-POOL_SIZE="${2:-3}"
+OS_TYPE="${1:-all}"
+POOL_SIZE="${2:-}"
 
-[[ -n "$OS_TYPE" ]] || { echo "Usage: $0 <linux|macos|windows> <pool_size>"; exit 1; }
+# Default pool sizes per OS
+POOL_LINUX="${POOL_LINUX:-5}"
+POOL_MACOS="${POOL_MACOS:-1}"
+POOL_WINDOWS="${POOL_WINDOWS:-1}"
 [[ -n "$RUNNER_GH_TOKEN" ]] || { echo "RUNNER_GH_TOKEN not set in .env"; exit 1; }
 [[ -n "$RUNNER_ORG" ]] || { echo "RUNNER_ORG not set in .env"; exit 1; }
 
@@ -240,12 +243,9 @@ destroy_resource() {
 # Pool manager — maintain N runners
 ########################################
 
-get_runner_config
-
 # Cleanup on exit
 cleanup() {
     log "Pool shutting down..."
-    # Kill all background spawn jobs
     jobs -p | xargs -r kill 2>/dev/null || true
     wait 2>/dev/null || true
     rm -f /tmp/nomercy-runner-pool.pid
@@ -253,24 +253,63 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Track slot availability
+# Track slot availability per OS-slot key
 declare -A SLOT_PIDS
 
-log "Starting pool..."
+# Build the list of (os, slot) pairs to manage
+declare -a POOL_ENTRIES=()
+
+add_os_pool() {
+    local os=$1
+    local count=$2
+    for ((i=1; i<=count; i++)); do
+        POOL_ENTRIES+=("${os}:${i}")
+    done
+}
+
+case "$OS_TYPE" in
+    all)
+        add_os_pool linux "$POOL_LINUX"
+        add_os_pool macos "$POOL_MACOS"
+        add_os_pool windows "$POOL_WINDOWS"
+        ;;
+    linux|macos|windows)
+        local_size="${POOL_SIZE:-}"
+        if [[ -z "$local_size" ]]; then
+            case "$OS_TYPE" in
+                linux) local_size=$POOL_LINUX ;;
+                macos) local_size=$POOL_MACOS ;;
+                windows) local_size=$POOL_WINDOWS ;;
+            esac
+        fi
+        add_os_pool "$OS_TYPE" "$local_size"
+        ;;
+    *)
+        die "Unknown OS: $OS_TYPE. Use linux, macos, windows, or all."
+        ;;
+esac
+
+log "Starting pool: ${#POOL_ENTRIES[@]} runners"
+for entry in "${POOL_ENTRIES[@]}"; do
+    log "  ${entry%%:*} #${entry##*:}"
+done
 
 while true; do
-    for ((slot=1; slot<=POOL_SIZE; slot++)); do
-        pid=${SLOT_PIDS[$slot]:-}
+    for entry in "${POOL_ENTRIES[@]}"; do
+        os="${entry%%:*}"
+        slot="${entry##*:}"
+        key="${os}-${slot}"
+        pid=${SLOT_PIDS[$key]:-}
 
-        # Check if slot is free (no PID or process finished)
         if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
-            # Slot is free — spawn a new ephemeral runner
+            # Set OS_TYPE for spawn_runner
+            OS_TYPE="$os"
+            get_runner_config
             spawn_runner "$slot" &
-            SLOT_PIDS[$slot]=$!
-            log "Slot ${slot} → PID ${SLOT_PIDS[$slot]}"
+            SLOT_PIDS[$key]=$!
+            log "[${os}-${slot}] Spawned → PID ${SLOT_PIDS[$key]}"
         fi
     done
 
-    # Check every 10 seconds for finished slots
     sleep 10
 done

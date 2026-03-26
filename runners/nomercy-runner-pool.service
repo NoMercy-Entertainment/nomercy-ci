@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=/opt/nomercy-ci/.env
-ExecStart=/opt/nomercy-ci/runners/runner_pool.sh linux 10
+ExecStart=/opt/nomercy-ci/runners/runner_pool.sh all
 Restart=always
 RestartSec=30
 StandardOutput=journal
