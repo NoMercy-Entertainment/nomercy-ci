@@ -37,7 +37,7 @@ validate_env() {
             [[ -n "$RUNNER_VERSION" ]] || die "RUNNER_VERSION not set in .env"
             ;;
         macos)
-            [[ -n "$RUNNER_MACOS_ISO" ]] || die "RUNNER_MACOS_ISO not set in .env"
+            [[ -n "$RUNNER_OPENCORE_ISO" ]] || die "RUNNER_OPENCORE_ISO not set in .env"
             ;;
         windows)
             [[ -n "$RUNNER_WINDOWS_ISO" ]] || die "RUNNER_WINDOWS_ISO not set in .env"
