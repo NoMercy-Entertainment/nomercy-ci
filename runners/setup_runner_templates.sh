@@ -187,16 +187,17 @@ setup_macos_template() {
         curl -fsSL https://raw.githubusercontent.com/kholia/OSX-KVM/master/fetch-macOS-v2.py \
             -o "${tmpdir}/fetch.py"
 
-        # Auto-select Sonoma (option 7) and download
-        log "Fetching macOS Sonoma from Apple (this may take a few minutes)..."
-        echo "7" | python3 "${tmpdir}/fetch.py" 2>&1 | tail -5
+        # Download macOS Sonoma non-interactively
+        local macos_version="${RUNNER_MACOS_VERSION:-sonoma}"
+        log "Fetching macOS ${macos_version} from Apple (this may take a few minutes)..."
+        cd "${tmpdir}"
+        python3 fetch.py --shortname "${macos_version}" 2>&1 | tail -10 || \
+            python3 fetch.py -s "${macos_version}" 2>&1 | tail -10
+        cd - >/dev/null
 
         # Find the downloaded BaseSystem.dmg
         local dmg
-        dmg=$(find "${tmpdir}" /tmp -maxdepth 2 -name "BaseSystem.dmg" 2>/dev/null | head -1)
-        if [[ -z "$dmg" ]]; then
-            dmg=$(find . -maxdepth 2 -name "BaseSystem.dmg" 2>/dev/null | head -1)
-        fi
+        dmg=$(find "${tmpdir}" -maxdepth 2 -name "BaseSystem.dmg" -o -name "RecoveryImage.dmg" 2>/dev/null | head -1)
 
         if [[ -z "$dmg" ]]; then
             rm -rf "$tmpdir"
