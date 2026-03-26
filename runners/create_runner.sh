@@ -38,7 +38,12 @@ get_reg_token() {
     local response
     response=$(curl -sS -X POST \
         -H "Authorization: Bearer ${RUNNER_GH_TOKEN}" \
-        "https://api.github.com/orgs/${RUNNER_ORG}/actions/runners/registration-token")
+        "https://api.github.com/orgs/${RUNNER_ORG}/actions/runners/registration-token" 2>&1)
+
+    # Check if response is valid JSON
+    if ! echo "$response" | jq . >/dev/null 2>&1; then
+        die "GitHub API returned invalid response. Check RUNNER_GH_TOKEN in .env"
+    fi
 
     local token
     token=$(echo "$response" | jq -r '.token // empty')
@@ -92,7 +97,7 @@ create_runner() {
         fi
 
         log "[${name}] Cloning LXC template ${template} → CTID ${vmid}"
-        pct clone "$template" "$vmid" --hostname "$name"
+        pct clone "$template" "$vmid" --hostname "$name" --full
         pct set "$vmid" --cores "$cores" --memory "$mem"
         pct start "$vmid"
 
