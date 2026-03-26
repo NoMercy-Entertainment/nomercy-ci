@@ -227,7 +227,7 @@ setup_windows_template() {
     local iso_name="nomercy-runner-drivers.iso"
     local iso_path="${ISO_STORAGE_PATH}/${iso_name}"
 
-    cp "${CI_ROOT}/setup/autounattend_win11.xml" "${tmpdir}/autounattend.xml"
+    cp "${CI_ROOT}/setup/autounattend_win10.xml" "${tmpdir}/autounattend.xml"
     cp "${CI_ROOT}/runners/install_windows_runner.ps1" "${tmpdir}/setup_windows_postinstall.ps1"
     cp "$SSH_PUB_KEY" "${tmpdir}/ci_ed25519.pub"
 
