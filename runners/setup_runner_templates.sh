@@ -58,10 +58,8 @@ setup_linux_template() {
     validate_env linux
 
     # Skip if template already exists
-    if pct config "$ctid" >/dev/null 2>&1; then
-        local is_tmpl
-        is_tmpl=$(pct config "$ctid" | grep -c '^template: 1' || true)
-        if (( is_tmpl > 0 && FORCE == 0 )); then
+    if pct config "$ctid" >/dev/null 2>&1 && (( FORCE == 0 )); then
+        if pct config "$ctid" 2>/dev/null | grep -qi 'template'; then
             log "Linux template already exists (CTID ${ctid}). Skipping. Use --force to recreate."
             return
         fi
@@ -162,10 +160,8 @@ setup_macos_template() {
     validate_env macos
 
     # Skip if template already exists
-    if qm config "$vmid" >/dev/null 2>&1; then
-        local is_tmpl
-        is_tmpl=$(qm config "$vmid" | grep -c '^template: 1' || true)
-        if (( is_tmpl > 0 && FORCE == 0 )); then
+    if qm config "$vmid" >/dev/null 2>&1 && (( FORCE == 0 )); then
+        if qm config "$vmid" 2>/dev/null | grep -qi 'template'; then
             log "macOS template already exists (VMID ${vmid}). Skipping. Use --force to recreate."
             return
         fi
@@ -373,10 +369,8 @@ setup_windows_template() {
     validate_env windows
 
     # Skip if template already exists
-    if qm config "$vmid" >/dev/null 2>&1; then
-        local is_tmpl
-        is_tmpl=$(qm config "$vmid" | grep -c '^template: 1' || true)
-        if (( is_tmpl > 0 && FORCE == 0 )); then
+    if qm config "$vmid" >/dev/null 2>&1 && (( FORCE == 0 )); then
+        if qm config "$vmid" 2>/dev/null | grep -qi 'template'; then
             log "Windows template already exists (VMID ${vmid}). Skipping. Use --force to recreate."
             return
         fi
