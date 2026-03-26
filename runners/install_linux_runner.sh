@@ -168,7 +168,7 @@ ln -s /opt/gradle-8.14/bin/gradle /usr/local/bin/gradle
 rm /tmp/gradle.zip
 
 # Maven
-curl -fsSL "https://dlcdn.apache.org/maven/maven-3/3.9.13/binaries/apache-maven-3.9.14-bin.tar.gz" \
+curl -fsSL "https://dlcdn.apache.org/maven/maven-3/3.9.14/binaries/apache-maven-3.9.14-bin.tar.gz" \
     | tar -C /opt -xz
 ln -s /opt/apache-maven-3.9.14/bin/mvn /usr/local/bin/mvn
 
