@@ -99,16 +99,23 @@ macOS in a VM requires OpenCore as the bootloader. The script handles this autom
 4. Configures Apple SMC passthrough + CPU flags
 5. All disks on SATA (macOS has no VirtIO SCSI drivers)
 
-After the script creates the VM, open the Proxmox console to complete the install:
+The script creates the VM, starts it, then waits for SSH. Complete the install from the Proxmox console while the script is running:
 
 1. OpenCore boot picker appears — select the macOS installer
 2. Open Disk Utility — erase the ~50 GB SATA disk as APFS
 3. Install macOS to that disk
 4. VM reboots — select "macOS Installer" in OpenCore (continues install)
 5. After final reboot — select "Macintosh HD" in OpenCore
-6. Enable SSH: System Settings > General > Sharing > Remote Login
-7. Create user, install SSH key, run `install_macos_runner.sh`
-8. Shut down and convert to template: `qm stop <vmid> && qm set <vmid> --template 1`
+6. Create user `ci` during initial setup
+7. System Settings > General > Sharing > enable Remote Login (SSH)
+8. Open Terminal: `mkdir -p ~/.ssh && echo '<your-key>' >> ~/.ssh/authorized_keys`
+
+Once SSH is available, the script automatically:
+- Installs all CI tools via `install_macos_runner.sh`
+- Shuts down the VM
+- Converts to template
+
+Same flow as Linux and Windows — you don't need to manually run anything after enabling SSH.
 
 ---
 
