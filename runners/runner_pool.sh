@@ -113,12 +113,21 @@ spawn_runner() {
 
     log "[${name}] Spawning (CTID ${ctid})..."
 
-    # Clone
+    # Clone (retry with backoff — LVM locks template during clone)
     if [[ "$OS_TYPE" == "linux" ]]; then
-        pct clone "$template" "$ctid" --hostname "$name" --full || {
-            log "[${name}] Clone failed"
+        local clone_ok=0
+        for try in 1 2 3 4 5; do
+            if flock -w 120 /tmp/nomercy-clone.lock pct clone "$template" "$ctid" --hostname "$name" --full 2>/dev/null; then
+                clone_ok=1
+                break
+            fi
+            log "[${name}] Clone busy, retry ${try}/5..."
+            sleep $((try * 10))
+        done
+        if (( clone_ok == 0 )); then
+            log "[${name}] Clone failed after 5 retries"
             return 1
-        }
+        fi
         pct set "$ctid" --cores "$RUNNER_CORES" --memory "$RUNNER_MEM"
         pct start "$ctid"
 
@@ -321,6 +330,9 @@ for entry in "${POOL_ENTRIES[@]}"; do
     log "  ${entry%%:*} #${entry##*:}"
 done
 
+# Use a lock file to serialize cloning (LVM can only clone one at a time)
+CLONE_LOCK="/tmp/nomercy-clone.lock"
+
 while true; do
     for entry in "${POOL_ENTRIES[@]}"; do
         os="${entry%%:*}"
@@ -335,6 +347,9 @@ while true; do
             spawn_runner "$slot" &
             SLOT_PIDS[$key]=$!
             log "[${os}-${slot}] Spawned → PID ${SLOT_PIDS[$key]}"
+            # Wait for clone to finish before spawning next
+            # (LVM locks the template during full clone)
+            sleep 15
         fi
     done
 
