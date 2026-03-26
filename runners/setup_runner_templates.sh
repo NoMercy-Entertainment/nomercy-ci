@@ -24,7 +24,10 @@ PUB_KEY=$(cat "$SSH_PUB_KEY")
 
 STORAGE="${STORAGE:-local-lvm}"
 BRIDGE="${BRIDGE:-vmbr0}"
+FORCE=0
 TARGET="${1:-all}"
+[[ "${2:-}" == "--force" || "${1:-}" == "--force" ]] && FORCE=1
+[[ "${1:-}" == "--force" ]] && TARGET="${2:-all}"
 
 # Validate required env vars
 validate_env() {
@@ -53,6 +56,16 @@ setup_linux_template() {
 
     log "=== Linux Runner Template (CTID ${ctid}) ==="
     validate_env linux
+
+    # Skip if template already exists
+    if pct config "$ctid" >/dev/null 2>&1; then
+        local is_tmpl
+        is_tmpl=$(pct config "$ctid" | grep -c '^template: 1' || true)
+        if (( is_tmpl > 0 && FORCE == 0 )); then
+            log "Linux template already exists (CTID ${ctid}). Skipping. Use --force to recreate."
+            return
+        fi
+    fi
 
     # Download template if needed
     if ! pveam list local 2>/dev/null | grep -q "$tmpl"; then
@@ -147,6 +160,16 @@ setup_macos_template() {
 
     log "=== macOS Runner Template (VMID ${vmid}) ==="
     validate_env macos
+
+    # Skip if template already exists
+    if qm config "$vmid" >/dev/null 2>&1; then
+        local is_tmpl
+        is_tmpl=$(qm config "$vmid" | grep -c '^template: 1' || true)
+        if (( is_tmpl > 0 && FORCE == 0 )); then
+            log "macOS template already exists (VMID ${vmid}). Skipping. Use --force to recreate."
+            return
+        fi
+    fi
 
     [[ -n "$RUNNER_OPENCORE_ISO" ]] || die "RUNNER_OPENCORE_ISO not set in .env"
 
@@ -348,6 +371,16 @@ setup_windows_template() {
 
     log "=== Windows Runner Template (VMID ${vmid}) ==="
     validate_env windows
+
+    # Skip if template already exists
+    if qm config "$vmid" >/dev/null 2>&1; then
+        local is_tmpl
+        is_tmpl=$(qm config "$vmid" | grep -c '^template: 1' || true)
+        if (( is_tmpl > 0 && FORCE == 0 )); then
+            log "Windows template already exists (VMID ${vmid}). Skipping. Use --force to recreate."
+            return
+        fi
+    fi
 
     # Ensure genisoimage is available for building the driver ISO
     apt-get install -y --no-install-recommends genisoimage >/dev/null 2>&1
