@@ -217,7 +217,6 @@ setup_macos_template() {
         --cores "$RUNNER_MACOS_CORES" \
         --memory "$RUNNER_MACOS_MEM" \
         --net0 "vmxnet3,bridge=${BRIDGE}" \
-        --scsihw virtio-scsi-single \
         --bios ovmf \
         --machine q35 \
         --cpu host \
@@ -225,7 +224,7 @@ setup_macos_template() {
 
     # Disks
     log "Creating disks..."
-    qm set "$vmid" --scsi0 "${STORAGE}:50,discard=on,ssd=1"
+    qm set "$vmid" --sata2 "${STORAGE}:50,discard=on,ssd=1"
     qm set "$vmid" --efidisk0 "${STORAGE}:1"
 
     # Import OpenCore as a disk (GPT disk image, not a bootable CD)
@@ -243,7 +242,7 @@ setup_macos_template() {
     qm set "$vmid" --sata0 "$mac_disk"
 
     # Boot from OpenCore first
-    qm set "$vmid" --boot "order=ide2;scsi0"
+    qm set "$vmid" --boot "order=ide2;sata2"
 
     # Add Apple SMC key + CPU flags directly to config
     # (qm set mangles the args string, so write directly)
