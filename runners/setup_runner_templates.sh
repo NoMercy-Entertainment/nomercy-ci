@@ -187,10 +187,21 @@ setup_macos_template() {
     log "Creating disks..."
     qm set "$vmid" --scsi0 "${STORAGE}:50,discard=on,ssd=1"
     qm set "$vmid" --efidisk0 "${STORAGE}:1"
-    qm set "$vmid" --ide0 "${RUNNER_MACOS_ISO},media=cdrom"
-    qm set "$vmid" --ide2 "${RUNNER_OPENCORE_ISO},media=cdrom"
 
-    # Boot from OpenCore first — it chainloads the macOS installer
+    # macOS installer on SATA (OpenCore can see SATA, not IDE)
+    qm set "$vmid" --sata0 "${RUNNER_MACOS_ISO},media=cdrom"
+
+    # OpenCore as raw disk (it's a GPT disk image, not a bootable ISO)
+    log "Importing OpenCore disk image..."
+    local opencore_file
+    opencore_file=$(pvesm path "${RUNNER_OPENCORE_ISO}" 2>/dev/null)
+    qm importdisk "$vmid" "$opencore_file" "${STORAGE}" >/dev/null
+    # Find the imported disk name (last disk created)
+    local oc_disk
+    oc_disk=$(qm config "$vmid" | grep '^unused' | tail -1 | awk '{print $2}')
+    qm set "$vmid" --ide2 "$oc_disk"
+
+    # Boot from OpenCore disk first
     qm set "$vmid" --boot "order=ide2;scsi0"
 
     # Add Apple SMC key + CPU flags directly to config
