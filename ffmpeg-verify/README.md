@@ -92,9 +92,17 @@ cleared until a device with matching labels is reattached.
 in `ffmpeg-freebsd-x86_64.dockerfile`, currently 14.3. A different major version
 is a different ABI, so a pass there would not mean the shipped binary works.
 
-**The Windows runner is a logon task, not a service.** Installing a service
-needs elevation, and a UAC prompt defeats an unattended fleet. It comes up at
-logon; a job queued while the machine is off simply waits.
+**The Windows runner must be a service, not a logon task.** A logon task runs
+inside the interactive session: it puts a console window on the owner's desktop
+and dies at logout. Installing the service needs one elevated run, and there is
+no `svc.cmd` on Windows — the service is created by `config.cmd --runasservice`,
+so it must be chosen at registration time rather than converted afterwards.
+
+Session 0 does not break NVENC on this hardware. Verified on an RTX 2080 SUPER
+with the service running as `NT AUTHORITY\NETWORK SERVICE`: 23 passed, 0 failed,
+NVENC among the passes. Re-check after a driver or GPU change — a session-0 NVENC
+failure would look like an ordinary test failure on the one platform nothing else
+in the fleet can cover.
 
 ## Relationship to Fillz's runner manager
 
