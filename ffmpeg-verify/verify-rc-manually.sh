@@ -13,8 +13,16 @@
 # opinion produced a different way.
 #
 #   ./verify-rc-manually.sh --tag v1.0.39-rc --commit <sha> [--platform NAME]
+#   ./verify-rc-manually.sh --commit <sha> --stage-only
 #
 # Verdicts land in ./verdicts/verdict-<platform>.json next to this script.
+#
+# It can only verify a commit that CARRIES the verifier, because each leg runs
+# tests/verify-rc.sh from the commit under test rather than from a copy that
+# might have drifted. Aiming it at an older release fails with
+# `repo/tests/verify-rc.sh: No such file or directory`, which is correct and
+# not a fault to debug: the first verifiable RC is the first one built from a
+# commit that has these scripts in it.
 set -uo pipefail
 
 REPO='NoMercy-Entertainment/nomercy-ffmpeg'
