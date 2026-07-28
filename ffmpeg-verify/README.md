@@ -37,9 +37,18 @@ never positively exercised**. The suite skips them and records why, and the bot
 reports them as untested rather than folding them into a green tick. Adding an
 AMD or Intel card to the Proxmox host is the only thing that would change this.
 
-Linux NVENC is also unverified. The only NVIDIA card is in the Windows desktop,
-and NVENC cannot be reached through WSL2 or a container — `cuInit` succeeds and
-the encode then dies with SIGFPE. Windows NVENC is verified natively instead.
+Linux NVENC is also unverified, but not for the reason it first appeared. The
+only NVIDIA card is in the Windows desktop, and the GPU passthrough into WSL2 is
+fine: `/dev/dxg` is present, `nvidia-smi` works, and `libnvidia-encode` resolves.
+The blocker is the fork itself. WSL2's `libcuda.so.1` is a shim that must
+`dlopen` the real driver from `/usr/lib/wsl/drivers/...`, and our statically
+linked build cannot complete that second-stage load, so `cuInit` returns
+`CUDA_ERROR_OPERATING_SYSTEM`. A stock dynamically linked ffmpeg encodes fine on
+the same machine and GPU. Native Linux has no shim, which is why this only shows
+up under WSL2. See `probe-nvenc-wsl2.sh` and nomercy-ffmpeg#42.
+
+Windows NVENC is verified natively instead. If that issue is fixed, Linux NVENC
+coverage follows on the same box with no new hardware.
 
 ## Provisioning
 
@@ -56,7 +65,7 @@ AUTHORIZED_KEY="<driver public key>" ./provision-freebsd-vm.sh
 # On the Mac mini — Rosetta, Lima, and the runner
 RUNNER_TOKEN="$RUNNER_TOKEN" ./setup-mac-mini.sh
 
-# On the Windows desktop — runner as a logon task
+# On the Windows desktop — runner as a service (run elevated)
 ./install-runner-windows.ps1 -Token $token
 ```
 
