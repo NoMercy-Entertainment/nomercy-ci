@@ -92,8 +92,14 @@ So `install-macos-autostart.sh` makes the login happen instead, and adds a
 watchdog for what login alone does not cover:
 
 ```bash
-./install-macos-autostart.sh --password '<login password>'
+./install-macos-autostart.sh --auto-login
 ```
+
+It prompts for the login password. Pass it on stdin when there is no terminal —
+`--auto-login --password-stdin <<<"$pw"`. There is also a `--password` flag for
+automation that cannot manage either, but prefer not to: `argv` is readable by
+any local user through `ps` for as long as the script runs, and it lands in
+shell history.
 
 It enables auto-login, then installs `tv.nomercy.runner-watchdog`, a LaunchAgent
 that runs every 5 minutes and starts anything that is down — the Lima guest,
@@ -114,6 +120,29 @@ And `sysadminctl -autologin` is broken on macOS 26: it sets the user preference
 and then fails the credential with `SACSetAutoLoginPassword error:22`, which
 looks like success and is not. The installer verifies `/etc/kcpassword` exists
 and writes it directly when that happens.
+
+### The failure the watchdog cannot cover
+
+The watchdog is a LaunchAgent, so it needs the session that auto-login exists to
+create. If auto-login itself breaks, the watchdog is not running either, and the
+machine comes back from a reboot with no runners and nothing saying why. Given
+that `sysadminctl` has already been caught breaking auto-login without saying so,
+that is not hypothetical.
+
+`tv.nomercy.autologin-health` covers it. It is a LaunchDaemon, so it runs at boot
+regardless of any session, and hourly after that. It checks the user preference,
+`/etc/kcpassword` and FileVault, and writes to `/var/log/nomercy-autologin-health.log`
+and the system log when any of them is wrong. It never repairs anything —
+repairing auto-login needs the login password, and a root daemon holding that
+would be worse than the fault it reports.
+
+```bash
+tail /var/log/nomercy-autologin-health.log
+/usr/bin/log show --predicate 'eventMessage BEGINSWITH "nomercy-autologin:"' --last 1d
+```
+
+Spell out `/usr/bin/log`: `log` is a zsh builtin that takes no arguments, so the
+bare command fails with `too many arguments` in the default macOS shell.
 
 ## Things that cost a rebuild, so they are written down
 

@@ -20,18 +20,26 @@
 # is unencrypted either way and auto-login does not change the physical-access
 # picture. Do not run this on a machine where that is not already true.
 #
-# Usage: install-macos-autostart.sh --password <login password> [--user stoney]
+# Usage: install-macos-autostart.sh --auto-login [--user stoney]
+#        install-macos-autostart.sh --auto-login --password-stdin <<<"$pw"
 set -euo pipefail
 
 USER_NAME="${USER:-$(id -un)}"
 PASSWORD=""
+WANT_AUTO_LOGIN=""
+READ_STDIN=""
 INTERVAL="${INTERVAL:-300}"
 LIMA_INSTANCE="${LIMA_INSTANCE:-linux-arm64}"
 LIMA_BIN="${LIMA_BIN:-$HOME/lima/bin/limactl}"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--password) PASSWORD="$2"; shift 2 ;;
+	# argv is readable via `ps` by any local user and lands in shell history,
+	# so this stays available for automation but is not the documented path.
+	--password) PASSWORD="$2"; WANT_AUTO_LOGIN=yes; shift 2 ;;
+	--password-stdin) READ_STDIN=yes; WANT_AUTO_LOGIN=yes; shift ;;
+	--auto-login) WANT_AUTO_LOGIN=yes; shift ;;
+	--no-auto-login) WANT_AUTO_LOGIN=no; shift ;;
 	--user) USER_NAME="$2"; shift 2 ;;
 	--interval) INTERVAL="$2"; shift 2 ;;
 	--lima-instance) LIMA_INSTANCE="$2"; shift 2 ;;
@@ -41,10 +49,26 @@ done
 
 [[ "$(uname -s)" == "Darwin" ]] || { echo "macOS only." >&2; exit 2; }
 
-if [[ "$(fdesetup status 2>/dev/null)" != "FileVault is Off."* ]]; then
+# `fdesetup status` is localised, so matching its sentence refuses to run on a
+# non-English system. `isactive` prints true/false in every locale.
+if [[ "$(fdesetup isactive 2>/dev/null)" == "true" ]]; then
 	echo "Refusing: FileVault is on, so auto-login cannot work and this would" >&2
 	echo "leave you believing reboots are covered when they are not." >&2
 	exit 1
+fi
+
+if [[ "$WANT_AUTO_LOGIN" == "yes" && -z "$PASSWORD" ]]; then
+	if [[ -n "$READ_STDIN" ]]; then
+		IFS= read -r PASSWORD
+	elif [[ -t 0 ]]; then
+		read -rsp "Login password for ${USER_NAME}: " PASSWORD
+		echo
+	else
+		echo "No terminal to prompt on. Pass the password on stdin:" >&2
+		echo "  install-macos-autostart.sh --auto-login --password-stdin <<<\"\$pw\"" >&2
+		exit 2
+	fi
+	[[ -n "$PASSWORD" ]] || { echo "Empty password; not configuring auto-login." >&2; exit 2; }
 fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,8 +76,12 @@ AGENT_DIR="$HOME/Library/LaunchAgents"
 BIN_DIR="$HOME/.local/bin"
 WATCHDOG="$BIN_DIR/nomercy-runner-watchdog.sh"
 LABEL="tv.nomercy.runner-watchdog"
+HEALTH_LABEL="tv.nomercy.autologin-health"
 
 mkdir -p "$AGENT_DIR" "$BIN_DIR"
+
+# Anything written below holds or derives from the login password.
+umask 077
 
 echo "── Auto-login ──"
 if [[ -n "$PASSWORD" ]]; then
@@ -70,6 +98,11 @@ if [[ -n "$PASSWORD" ]]; then
 		echo "sysadminctl did not write /etc/kcpassword; writing it directly."
 		# The classic loginwindow obfuscation: XOR against a fixed key, zero
 		# padded to a multiple of 12 (a whole extra block when already aligned).
+		# mktemp gives an unpredictable name at mode 600, and the trap covers the
+		# failure paths: until `install` runs, this file is the login password
+		# behind a fixed XOR key, which is no protection at all.
+		KCP_TMP="$(mktemp "${TMPDIR:-/tmp}/nomercy-kcp.XXXXXXXX")"
+		trap 'rm -f "$KCP_TMP"' EXIT
 		PASSWORD="$PASSWORD" python3 -c '
 import os, sys
 key = bytes([0x7D,0x89,0x52,0x23,0xD2,0xBC,0xDD,0xEA,0xA3,0xB9,0x1F])
@@ -77,9 +110,9 @@ raw = bytearray(os.environ["PASSWORD"].encode("utf-8"))
 pad = 12 - (len(raw) % 12)
 raw += b"\x00" * pad
 sys.stdout.buffer.write(bytes(c ^ key[i % len(key)] for i, c in enumerate(raw)))
-' >/tmp/.kcp.$$
-		printf '%s\n' "$PASSWORD" | sudo -S -p '' install -m 600 -o root -g wheel /tmp/.kcp.$$ /etc/kcpassword
-		rm -f /tmp/.kcp.$$
+' >"$KCP_TMP"
+		printf '%s\n' "$PASSWORD" | sudo -S -p '' install -m 600 -o root -g wheel "$KCP_TMP" /etc/kcpassword
+		rm -f "$KCP_TMP"
 	fi
 
 	printf '%s\n' "$PASSWORD" | sudo -S -p '' defaults write \
@@ -93,8 +126,49 @@ sys.stdout.buffer.write(bytes(c ^ key[i % len(key)] for i, c in enumerate(raw)))
 	printf '%s\n' "$PASSWORD" | sudo -S -p '' test -f /etc/kcpassword ||
 		{ echo "/etc/kcpassword is still missing; auto-login would not work." >&2; exit 1; }
 	echo "Auto-login enabled for ${USER_NAME} (user preference and credential both present)."
+
+	# The watchdog is a LaunchAgent, so it needs the very session auto-login
+	# exists to create. If auto-login breaks — an OS update resetting the
+	# preference, someone enabling FileVault — nothing below the login window
+	# is running to notice. This daemon runs at boot outside any GUI session and
+	# does nothing but say so. It cannot repair anything: it has no password,
+	# and holding one would be worse than the problem.
+	echo "── Auto-login health daemon ──"
+	# /usr/local/bin does not exist on a clean Apple Silicon Mac — Homebrew lives
+	# in /opt/homebrew and nothing else creates it.
+	printf '%s\n' "$PASSWORD" | sudo -S -p '' install -d -m 755 -o root -g wheel /usr/local/bin
+	printf '%s\n' "$PASSWORD" | sudo -S -p '' install -m 755 -o root -g wheel \
+		"${HERE}/macos-autologin-healthcheck.sh" /usr/local/bin/nomercy-autologin-healthcheck.sh
+
+	HEALTH_PLIST="$(mktemp "${TMPDIR:-/tmp}/nomercy-health.XXXXXXXX")"
+	cat >"$HEALTH_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>${HEALTH_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/usr/local/bin/nomercy-autologin-healthcheck.sh</string>
+        <string>${USER_NAME}</string>
+    </array>
+    <key>RunAtLoad</key><true/>
+    <key>StartInterval</key><integer>3600</integer>
+    <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>
+PLIST
+	printf '%s\n' "$PASSWORD" | sudo -S -p '' install -m 644 -o root -g wheel \
+		"$HEALTH_PLIST" "/Library/LaunchDaemons/${HEALTH_LABEL}.plist"
+	rm -f "$HEALTH_PLIST"
+
+	printf '%s\n' "$PASSWORD" | sudo -S -p '' launchctl bootout "system/${HEALTH_LABEL}" 2>/dev/null || true
+	printf '%s\n' "$PASSWORD" | sudo -S -p '' launchctl bootstrap system "/Library/LaunchDaemons/${HEALTH_LABEL}.plist"
+	echo "Health daemon installed; it logs to /var/log/nomercy-autologin-health.log and the system log."
 else
-	echo "No --password given; leaving auto-login as it is."
+	echo "Auto-login not requested; leaving it as it is."
+	echo "Without it, a reboot with nobody logged in leaves every runner down."
 fi
 
 echo "── Watchdog ──"
