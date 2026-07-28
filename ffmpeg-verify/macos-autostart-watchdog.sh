@@ -23,6 +23,22 @@ if [ -x "$LIMA_BIN" ]; then
 	_state="$("$LIMA_BIN" list --format '{{.Status}}' "$LIMA_INSTANCE" 2>/dev/null | head -1)"
 	if [ "$_state" != "Running" ]; then
 		say_ "lima ${LIMA_INSTANCE} is '${_state:-absent}', starting it"
+
+		# Broken is not Stopped. A guest killed mid-flight - a host reboot while
+		# it was live is enough - leaves the vz driver process behind with no
+		# host agent, and `limactl start` refuses that state forever. Every tick
+		# then logs a fresh failure and nothing changes. Force-stop first so the
+		# stale sockets and vz.pid are cleared, and starting works.
+		#
+		# Found after a reboot left this instance Broken for 19 hours while the
+		# watchdog reported it was trying: the linux-aarch64 leg of the
+		# verification fleet was simply gone, and only a manual look found it.
+		if [ "$_state" = "Broken" ]; then
+			say_ "lima ${LIMA_INSTANCE} is Broken, force-stopping before start"
+			"$LIMA_BIN" stop --force "$LIMA_INSTANCE" >>"$LOG" 2>&1 || true
+			sleep 3
+		fi
+
 		"$LIMA_BIN" start "$LIMA_INSTANCE" --tty=false >>"$LOG" 2>&1 &&
 			say_ "lima ${LIMA_INSTANCE} started" ||
 			say_ "lima ${LIMA_INSTANCE} FAILED to start"
