@@ -68,6 +68,44 @@ The repository then needs three variables so the workflow can find the guests:
 | `VERIFY_LIMA_BIN` | `/Users/stoney/lima/bin/limactl` |
 | `VERIFY_FREEBSD_SSH_TARGET` | `root@192.168.2.245` |
 
+## Surviving a reboot on the Mac
+
+`actions-runner`'s `svc.sh` only ever produces a user **LaunchAgent**. Those load
+at user login, not at boot, so an unattended reboot leaves every runner on the
+Mac down until somebody logs in. That silently removes three of the six
+platforms, and the checklist would just stay unticked with no obvious cause.
+
+Hand-writing a LaunchDaemon is the obvious fix and the wrong one: the runner
+requires `runsvc.sh` as its entry point, and a daemon outside the GUI session
+loses the keychain, signing identities and simulators the Xcode runner needs.
+
+So `install-macos-autostart.sh` makes the login happen instead, and adds a
+watchdog for what login alone does not cover:
+
+```bash
+./install-macos-autostart.sh --password '<login password>'
+```
+
+It enables auto-login, then installs `tv.nomercy.runner-watchdog`, a LaunchAgent
+that runs every 5 minutes and starts anything that is down — the Lima guest,
+which nothing else would ever start, and any runner service that is not loaded.
+The watchdog only ever starts things, so it is safe next to runners owned by
+someone else. It covers every `actions.runner.*` agent it finds, including the
+Xcode one.
+
+Verified by a real unattended reboot: auto-login took (`/dev/console` owned by
+the user), the Lima guest was started by the watchdog, and both runners were
+back online about 80 seconds after boot. The runner logs a
+`Runner connect error: Conflict` for the first half-minute while the pre-reboot
+session times out server-side; it retries and clears on its own.
+
+Two things worth knowing. Auto-login requires FileVault to be **off** — the
+installer refuses otherwise rather than leave you believing reboots are covered.
+And `sysadminctl -autologin` is broken on macOS 26: it sets the user preference
+and then fails the credential with `SACSetAutoLoginPassword error:22`, which
+looks like success and is not. The installer verifies `/etc/kcpassword` exists
+and writes it directly when that happens.
+
 ## Things that cost a rebuild, so they are written down
 
 **Never `qm stop` the FreeBSD guest.** A hard power-off leaves the filesystem
