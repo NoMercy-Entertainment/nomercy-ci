@@ -48,14 +48,22 @@ if [ "$(fdesetup isactive 2>/dev/null)" = "true" ]; then
 	problems=$((problems + 1))
 fi
 
-if [ "$problems" -eq 0 ]; then
-	# Quiet on the happy path, or the log becomes noise nobody reads. One line a
-	# day is enough to tell a working check from one that stopped running.
-	if [ -z "$(find "$LOG" -mtime -1 2>/dev/null)" ]; then
-		printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "ok: auto-login intact for ${configured_user}" >>"$LOG"
+rotate_() {
+	if [ -f "$LOG" ] && [ "$(wc -l <"$LOG")" -gt 2000 ]; then
+		tail -500 "$LOG" >"${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
 	fi
+}
+
+if [ "$problems" -eq 0 ]; then
+	# Writes on every run, including the one at boot. An hourly heartbeat is what
+	# makes "the check is running and everything is fine" distinguishable from
+	# "the check stopped running", and a silent boot run answers neither. Only
+	# the file gets the ok line; the system log stays for the failures.
+	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "ok: auto-login intact for ${configured_user}" >>"$LOG"
+	rotate_
 	exit 0
 fi
 
 say_ "Fix with: install-macos-autostart.sh --auto-login"
+rotate_
 exit 1
