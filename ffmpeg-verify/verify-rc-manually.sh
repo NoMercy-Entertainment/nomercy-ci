@@ -162,12 +162,38 @@ leg_linux_aarch64() {
 }
 
 # ── windows-x86_64: this machine, where the only NVENC card is ─────────────
+# Run locally rather than over SSH: this script is driven from the Windows host,
+# which is also the only machine in the fleet with an NVIDIA card. Printing
+# instructions here instead of doing the work would leave the one platform
+# nothing else can cover as the one platform the driver does not drive.
 leg_windows_x86_64() {
-	echo "  run on the Windows host itself:"
-	echo "    pwsh -File <repo>/tests/verify-rc.ps1 -Archive ... -Platform windows-x86_64 \\"
-	echo "         -Tag ${TAG} -Commit ${COMMIT} -Json verdict-windows-x86_64.json"
-	echo "  (driven separately - it is the machine this script runs from)"
-	return 0
+	local work="${LOCALAPPDATA:-$HOME}/rc-verify/windows-x86_64"
+	rm -rf "$work" && mkdir -p "$work/rc" || return 1
+
+	if [ ! -d "${work}/repo/.git" ]; then
+		git clone -q --no-checkout "https://github.com/${REPO}.git" "${work}/repo" || return 1
+	fi
+	git -C "${work}/repo" fetch -q origin "$COMMIT" && git -C "${work}/repo" checkout -q "$COMMIT" || return 1
+
+	local archive
+	archive="$(printf '%s' "$ASSETS" | python3 -c "import json,sys; print(next((a['name'] for a in json.load(sys.stdin) if 'windows-x86_64' in a['name'] and a['name'].endswith('zip')),''))")"
+	[ -n "$archive" ] || { echo "  no windows archive in ${TAG}"; return 1; }
+
+	local name url
+	for name in "$archive" manifest.json; do
+		url="$(printf '%s' "$ASSETS" | N="$name" python3 -c "import json,sys,os; print(next((a['url'] for a in json.load(sys.stdin) if a['name']==os.environ['N']),''))")"
+		[ -n "$url" ] || { echo "  asset ${name} missing from ${TAG}"; return 1; }
+		curl -fsSL -H "Authorization: Bearer ${TOKEN}" -H 'Accept: application/octet-stream' "$url" -o "${work}/rc/${name}" || return 1
+	done
+
+	pwsh -NoProfile -File "${work}/repo/tests/verify-rc.ps1" \
+		-Archive "${work}/rc/${archive}" \
+		-Manifest "${work}/rc/manifest.json" \
+		-Platform windows-x86_64 \
+		-WorkDir "${work}/run" \
+		-Json "${OUT}/verdict-windows-x86_64.json" \
+		-Tag "$TAG" \
+		-Commit "$COMMIT" || return 1
 }
 
 for p in linux-x86_64 linux-aarch64 darwin-arm64 darwin-x86_64 freebsd-x86_64 windows-x86_64; do
