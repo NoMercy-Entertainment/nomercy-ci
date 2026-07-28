@@ -1,2 +1,6 @@
 .env
 .ssh/
+
+# Verdicts are per-run evidence about a specific tag and commit, written next
+# to the driver by default. They are outputs, not sources.
+ffmpeg-verify/verdicts/
